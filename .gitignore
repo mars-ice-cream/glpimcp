@@ -1,0 +1,4 @@
+vendor/
+*.zip
+*.tar.bz2
+.DS_Store

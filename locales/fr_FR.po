@@ -1,0 +1,241 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: GLPI MCP\n"
+"Language: fr_FR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
+msgid "%d tools exposed. Each user generates their own token in My settings > AI assistant (MCP); the assistant then acts with exactly that user's rights."
+msgstr "%d outils exposés. Chaque utilisateur génère son propre jeton dans Mes préférences > Assistant IA (MCP) ; l'assistant agit alors avec exactement les droits de cet utilisateur."
+
+msgid "AI assistant (MCP)"
+msgstr "Assistant IA (MCP)"
+
+msgid "Active tokens"
+msgstr "Jetons actifs"
+
+msgid "Changes made through the AI assistant (last 200)"
+msgstr "Modifications faites via l'assistant IA (200 dernières)"
+
+msgid "Configuration updated"
+msgstr "Configuration enregistrée"
+
+msgid "Confirmation of AI changes"
+msgstr "Confirmation des modifications faites par l'IA"
+
+msgid "Connect an AI assistant to GLPI"
+msgstr "Connecter un assistant IA à GLPI"
+
+msgid "Copy this token now, it will not be shown again:"
+msgstr "Copiez ce jeton maintenant, il ne sera plus jamais affiché :"
+
+msgid "Default profile"
+msgstr "Profil par défaut"
+
+msgid "Every change is previewed and must be confirmed (recommended)"
+msgstr "Chaque modification est présentée en aperçu et doit être confirmée (recommandé)"
+
+msgid "Generate a token"
+msgstr "Générer un jeton"
+
+msgid "Last use"
+msgstr "Dernière utilisation"
+
+msgid "MCP server URL"
+msgstr "URL du serveur MCP"
+
+msgid "Max results per search"
+msgstr "Nombre max de résultats par recherche"
+
+msgid "Never expires"
+msgstr "N'expire jamais"
+
+msgid "No token yet."
+msgstr "Aucun jeton pour l'instant."
+
+msgid "Only sensitive changes (deletions, rights, configuration, users…) must be confirmed"
+msgstr "Seules les modifications sensibles (suppressions, droits, configuration, utilisateurs…) doivent être confirmées"
+
+msgid "Preview validity (minutes)"
+msgstr "Validité d'un aperçu (minutes)"
+
+msgid "Profile used by the assistant"
+msgstr "Profil utilisé par l'assistant"
+
+msgid "Revoke"
+msgstr "Révoquer"
+
+msgid "Revoked"
+msgstr "Révoqué"
+
+msgid "Send it in the HTTP header: Authorization: Bearer &lt;token&gt;"
+msgstr "À envoyer dans l'en-tête HTTP : Authorization: Bearer &lt;jeton&gt;"
+
+msgid "Summary"
+msgstr "Résumé"
+
+msgid "The assistant will act with exactly your GLPI rights (profile and entities). Every change is shown to you and must be confirmed before it is applied."
+msgstr "L'assistant agira avec exactement vos droits GLPI (profil et entités). Chaque modification vous est montrée et doit être confirmée avant d'être appliquée."
+
+msgid "Token generated. Copy it now."
+msgstr "Jeton généré. Copiez-le maintenant."
+
+msgid "Token revoked."
+msgstr "Jeton révoqué."
+
+msgid "Token"
+msgstr "Jeton"
+
+msgid "Tool"
+msgstr "Outil"
+
+msgid "Validity"
+msgstr "Validité"
+
+msgid "You cannot revoke this token."
+msgstr "Vous ne pouvez pas révoquer ce jeton."
+
+msgid "MCP token"
+msgid_plural "MCP tokens"
+msgstr[0] "Jeton MCP"
+msgstr[1] "Jetons MCP"
+
+msgid "AI action #%1$d undone (log #%2$d)."
+msgstr "Action IA #%1$d annulée (journal #%2$d)."
+
+msgid "AI action #%d"
+msgstr "Action IA #%d"
+
+msgid "AI actions made with this account"
+msgstr "Actions IA faites avec ce compte"
+
+msgid "Assistant"
+msgstr "Assistant"
+
+msgid "Cannot be undone:"
+msgstr "Ne peut pas être défait :"
+
+msgid "Changed since the AI action (will be overwritten):"
+msgstr "Modifié depuis l'action IA (sera écrasé) :"
+
+msgid "Confirm the undo"
+msgstr "Confirmer l'annulation"
+
+msgid "Details"
+msgstr "Détails"
+
+msgid "No AI action yet."
+msgstr "Aucune action IA pour l'instant."
+
+msgid "Notes:"
+msgstr "À noter :"
+
+msgid "Nothing was modified."
+msgstr "Rien n'a été modifié."
+
+msgid "Show the undo anyway"
+msgstr "Afficher l'annulation quand même"
+
+msgid "The following steps will be applied, in a single transaction (all or nothing), with your GLPI rights:"
+msgstr "Les étapes suivantes seront appliquées en une seule transaction (tout ou rien), avec vos droits GLPI :"
+
+msgid "Undo this action"
+msgstr "Annuler cette action"
+
+msgid "Undoes"
+msgstr "Annule"
+
+msgid "Undone by"
+msgstr "Annulée par"
+
+msgid "Undo…"
+msgstr "Annuler…"
+
+msgid "What was done"
+msgstr "Ce qui a été fait"
+
+msgid "undo of #%d"
+msgstr "annule #%d"
+
+msgid "undone (#%d)"
+msgstr "annulée (#%d)"
+
+msgid "%s wants to access your GLPI"
+msgstr "%s souhaite accéder à votre GLPI"
+
+msgid "Access token lifetime (seconds)"
+msgstr "Durée de vie d'un jeton d'accès (secondes)"
+
+msgid "Active users"
+msgstr "Utilisateurs actifs"
+
+msgid "After approval you will be redirected to %s."
+msgstr "Après validation, vous serez renvoyé vers %s."
+
+msgid "Allow"
+msgstr "Autoriser"
+
+msgid "Allow AI clients to register automatically (needed by claude.ai and ChatGPT)"
+msgstr "Autoriser les clients IA à s'enregistrer automatiquement (nécessaire pour claude.ai et ChatGPT)"
+
+msgid "Allow connection through OAuth (user logs in to GLPI and approves)"
+msgstr "Autoriser la connexion par OAuth (l'utilisateur se connecte à GLPI et valide)"
+
+msgid "Deny"
+msgstr "Refuser"
+
+msgid "Disable and cut access"
+msgstr "Désactiver et couper les accès"
+
+msgid "Disabled"
+msgstr "Désactivé"
+
+msgid "Enable"
+msgstr "Activer"
+
+msgid "Every change is shown to you and must be confirmed before it is applied, and can be undone from the AI journal."
+msgstr "Chaque modification vous est montrée et doit être confirmée avant d'être appliquée ; elle peut être annulée depuis le journal IA."
+
+msgid "It will act as %s, with exactly the rights of the profile chosen below — never more."
+msgstr "Il agira en tant que %s, avec exactement les droits du profil choisi ci-dessous — jamais plus."
+
+msgid "No AI client connected through OAuth yet."
+msgstr "Aucun client IA connecté par OAuth pour l'instant."
+
+msgid "Redirection"
+msgstr "Redirection"
+
+msgid "Registered AI clients (OAuth)"
+msgstr "Clients IA enregistrés (OAuth)"
+
+msgid "Remote AI connectors (OAuth): claude.ai, ChatGPT, Le Chat…"
+msgstr "Connecteurs IA distants (OAuth) : claude.ai, ChatGPT, Le Chat…"
+
+msgid "The application URL is not in HTTPS: claude.ai and ChatGPT will refuse to connect. Set a public HTTPS URL in Setup > General."
+msgstr "L'URL de l'application n'est pas en HTTPS : claude.ai et ChatGPT refuseront de se connecter. Renseignez une URL publique en HTTPS dans Configuration > Générale."
+
+msgid "You can revoke this access at any time in My settings > AI assistant (MCP)."
+msgstr "Vous pouvez révoquer cet accès à tout moment dans Mes préférences > Assistant IA (MCP)."
+
+msgid "Actions allowed for the AI assistant"
+msgstr "Types d'actions autorisés pour l'assistant IA"
+
+msgid "These switches come on top of GLPI rights: an action must be allowed by the user's profile AND enabled here. Risky actions are disabled by default. Every change is recorded in the AI log."
+msgstr "Ces interrupteurs s'ajoutent aux droits GLPI : une action doit être permise par le profil de l'utilisateur ET activée ici. Les actions à risque sont désactivées par défaut. Chaque modification est inscrite au journal IA."
+
+msgid "risky"
+msgstr "à risque"
+
+msgid "Reading is always allowed (within GLPI rights). Remote access to files from URLs is never available."
+msgstr "La lecture reste toujours possible (dans la limite des droits GLPI). Le téléchargement de fichiers depuis une URL n'existe pas dans ce plugin."
+
+msgid "The assistant will reach GLPI through the relay server %s, authorised by your administrator."
+msgstr "L'assistant accédera à GLPI via le serveur relais %s, autorisé par votre administrateur."
+
+msgid "Trusted relay servers (one MCP URL per line, e.g. Dokore)"
+msgstr "Serveurs relais autorisés (une URL MCP par ligne, ex. Dokore)"
+
+msgid "An AI client connected to such a relay can obtain a token here; the relay forwards it and GLPI rights still apply. Leave empty if you do not use one."
+msgstr "Un client IA connecté à un tel relais peut obtenir un jeton ici ; le relais le transmet et les droits GLPI s'appliquent toujours. Laisser vide si vous n'en utilisez pas."

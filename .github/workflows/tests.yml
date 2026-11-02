@@ -1,0 +1,24 @@
+name: Tests
+
+on: [push, pull_request]
+
+jobs:
+  lint-and-unit:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: intl, mbstring
+      - name: Syntaxe PHP
+        run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 php -l > /dev/null
+      - name: Tests unitaires
+        run: php tests/unit/run.php
+      - name: Traductions
+        run: sudo apt-get install -y gettext >/dev/null && msgfmt --check -o /dev/null locales/fr_FR.po
+      - name: XML du catalogue
+        run: python3 -c "import xml.dom.minidom,sys; xml.dom.minidom.parse('glpimcp.xml')"
