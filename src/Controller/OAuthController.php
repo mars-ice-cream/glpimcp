@@ -157,8 +157,8 @@ final class OAuthController extends AbstractController
                 echo '<div class="alert alert-info">' . sprintf(__('The assistant will reach GLPI through the relay server %s, authorised by your administrator.', 'glpimcp'), '<code>' . htmlescape((string) parse_url($res, PHP_URL_HOST)) . '</code>') . '</div>';
             }
             echo '<ul class="mb-3">';
-            echo '<li>' . sprintf(__('It will act as %s, with exactly the rights of the profile chosen below — never more.', 'glpimcp'), '<strong>' . htmlescape(getUserName($users_id)) . '</strong>') . '</li>';
-            echo '<li>' . __('Every change is shown to you and must be confirmed before it is applied, and can be undone from the AI journal.', 'glpimcp') . '</li>';
+            echo '<li>' . sprintf(__('It will act as %s, limited to the profile chosen below — it will never be able to use another profile with this access.', 'glpimcp'), '<strong>' . htmlescape(getUserName($users_id)) . '</strong>') . '</li>';
+            echo '<li>' . __('Changes are previewed before being applied (unless the administrator chose immediate application of ordinary changes); critical actions require your own approval in GLPI. What can be undone is shown, and undone from the AI journal.', 'glpimcp') . '</li>';
             echo '<li>' . __('You can revoke this access at any time in My settings > AI assistant (MCP).', 'glpimcp') . '</li>';
             echo '</ul>';
             echo '<form method="post" action="">';

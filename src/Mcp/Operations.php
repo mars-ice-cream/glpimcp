@@ -32,6 +32,11 @@ use Throwable;
 final class Operations
 {
     /** Types dont la modification est considérée « sensible » (confirmation toujours exigée). */
+    /** Ce que la transaction garantit réellement en cas d'échec */
+    public const ROLLBACK_SCOPE = "Les écritures en base de ce lot ont été annulées (transaction) : aucun élément n'a été créé, modifié ou supprimé "
+        . "dans GLPI. Limite : un effet hors base déjà déclenché par GLPI ou un autre plugin pendant l'exécution (e-mail envoyé "
+        . "immédiatement, appel à un service externe, fichier écrit) n'est pas annulé par la transaction.";
+
     public const SENSITIVE_TYPES = [
         'Entity', 'Profile', 'Profile_User', 'User', 'Group_User', 'RuleTicket', 'RuleRight', 'RuleAsset',
         'RuleMailCollector', 'Rule', 'RuleCriteria', 'RuleAction', 'MailCollector', 'Notification',
@@ -142,6 +147,7 @@ final class Operations
                             throw new ToolException("Modifier la configuration générale exige le droit « Configuration : modifier » (profil Super-Admin en général).");
                         }
                         $context = $op['context'] ?? 'core';
+                        self::guardConfigContext((string) $context);
                         $current = Config::getConfigurationValues($context, array_keys($op['values'] ?? []));
                         $changes = [];
                         foreach ($op['values'] ?? [] as $k => $v) {
@@ -220,13 +226,19 @@ final class Operations
 
         Items::flushMessages();
 
+        foreach ($preview as $k => $p) {
+            $i = (int) ($p['n'] ?? $k + 1) - 1;
+            if (isset($ops[$i]) && !isset($preview[$k]['annulable'])) {
+                $preview[$k]['annulable'] = self::undoabilityOf($ops[$i]);
+            }
+        }
         return ['preview' => $preview, 'warnings' => $warnings, 'sensitive' => $sensitive];
     }
 
     /**
      * Exécute réellement les opérations (après confirmation). Tout ou rien.
      */
-    public static function execute(array $ops, ?array &$journal = null): array
+    public static function execute(array $ops, ?array &$journal = null, ?callable $before_commit = null): array
     {
         global $DB;
 
@@ -259,6 +271,9 @@ final class Operations
                         }
                         $item->getFromDB((int) $id);
                         $journal['undo'][] = ['op' => 'delete', 'itemtype' => $item::class, 'id' => (int) $id, 'purge' => true, '_label' => 'supprimer ' . self::display($item)];
+                        if (self::notifies($item)) {
+                            $journal['irréversible'][] = 'Notifications e-mail éventuellement générées pour ' . self::display($item) . ' (une annulation ne les rappelle pas)';
+                        }
                         self::recordState($journal, $item);
                         $results[] = ['n' => $n, 'résultat' => 'créé', 'type' => Items::typeLabel($item), 'id' => (int) $id, 'nom' => self::display($item), 'url' => Items::url($item), 'messages_glpi' => $messages];
                         break;
@@ -335,6 +350,7 @@ final class Operations
                         if (!Session::haveRight('config', UPDATE)) {
                             throw new ToolException("Opération {$n} : droit de configuration manquant.");
                         }
+                        self::guardConfigContext((string) ($op['context'] ?? 'core'));
                         $previous = Config::getConfigurationValues($op['context'] ?? 'core', array_keys($op['values'] ?? []));
                         Config::setConfigurationValues($op['context'] ?? 'core', $op['values'] ?? []);
                         $journal['undo'][] = ['op' => 'config', 'context' => $op['context'] ?? 'core', 'values' => $previous, '_label' => 'remettre la configuration précédente (' . implode(', ', array_keys($previous)) . ')'];
@@ -408,13 +424,17 @@ final class Operations
                             $journal['undo'][] = ['op' => 'delete', 'itemtype' => $created_item::class, 'id' => $created_item->getID(), 'purge' => false, '_label' => 'mettre à la corbeille ' . $created_item->getNameID()];
                             self::recordState($journal, $created_item);
                         }
-                        $journal['irréversible'][] = 'Notifications e-mail déjà envoyées suite à la soumission du formulaire « ' . $form->getName() . ' »';
+                        $journal['irréversible'][] = 'Notifications e-mail générées par la soumission du formulaire « ' . $form->getName() . ' » (mises en file d\'envoi : une annulation ne les rappelle pas)';
                         $results[] = ['n' => $n, 'résultat' => 'formulaire soumis', 'formulaire' => $form->getName(), 'objets_créés' => $created, 'messages_glpi' => Items::flushMessages()];
                         break;
 
                     default:
                         throw new ToolException("Opération inconnue : {$kind}");
                 }
+            }
+            if ($before_commit !== null) {
+                // Ex. marquage « confirmation utilisée » : validé avec les écritures, ou annulé avec elles
+                $before_commit();
             }
             $DB->commit();
             $journal['undo'] = array_reverse($journal['undo']);
@@ -424,13 +444,88 @@ final class Operations
             } catch (Throwable) {
             }
             Items::flushMessages();
+            $scope = ' ' . self::ROLLBACK_SCOPE;
             if ($e instanceof ToolException) {
-                throw new ToolException($e->getMessage() . ' Rien n\'a été modifié (annulation complète).', $e->getDetails());
+                throw new ToolException($e->getMessage() . $scope, $e->getDetails() + ['transaction' => 'annulée']);
             }
-            throw new ToolException('Erreur GLPI pendant l\'exécution : ' . $e->getMessage() . ' — rien n\'a été modifié (annulation complète).');
+            throw new ToolException('Erreur GLPI pendant l\'exécution : ' . $e->getMessage() . '.' . $scope, ['transaction' => 'annulée']);
         }
 
         return $results;
+    }
+
+    /**
+     * Annulabilité d'une action exécutée, d'après son journal : totale, partielle ou aucune,
+     * et effets hors base connus (jamais défaits par une annulation).
+     *
+     * @return array{niveau: string, effets_externes: string[]}
+     */
+    public static function undoability(?array $journal): array
+    {
+        $undo = $journal['undo'] ?? [];
+        $irreversible = $journal['irréversible'] ?? [];
+        $external = array_values(array_filter($irreversible, fn($l) => str_contains((string) $l, 'Notification') || str_contains((string) $l, 'e-mail')));
+        $niveau = $undo === [] ? 'aucune' : ($irreversible === [] ? 'totale' : 'partielle');
+        return ['niveau' => $niveau, 'effets_externes' => $external];
+    }
+
+    /** Les réglages de l'assistant IA (interrupteurs, approbation, OAuth) ne se changent jamais par l'IA */
+    private static function guardConfigContext(string $context): void
+    {
+        if (str_starts_with($context, 'plugin:glpimcp')) {
+            throw new ToolException("Les réglages de GLPI MCP (types d'actions autorisés, approbation, OAuth) se modifient uniquement dans GLPI, pas via l'assistant.");
+        }
+    }
+
+    /**
+     * État des objets visés par le lot (date de modification, ou empreinte des champs à défaut) :
+     * fait partie de l'empreinte de l'aperçu, pour qu'une modification faite entre l'aperçu et l'exécution
+     * (même invisible dans l'aperçu, ex. une suppression) impose un nouvel aperçu.
+     */
+    public static function basis(array $ops): array
+    {
+        $out = [];
+        foreach ($ops as $op) {
+            if (empty($op['itemtype']) || empty($op['id']) || !is_numeric($op['id'])) {
+                continue;
+            }
+            $class = ltrim((string) $op['itemtype'], '\\');
+            if (!class_exists($class) || !is_subclass_of($class, CommonDBTM::class)) {
+                continue;
+            }
+            $item = new $class();
+            if (!$item->getFromDB((int) $op['id'])) {
+                $out[$class . '#' . $op['id']] = 'absent';
+                continue;
+            }
+            $out[$class . '#' . $op['id']] = $item->fields['date_mod'] ?? hash('sha256', (string) json_encode($item->fields));
+        }
+        ksort($out);
+        return $out;
+    }
+
+    /** Objets dont la création déclenche des notifications GLPI */
+    private static function notifies(CommonDBTM $item): bool
+    {
+        return $item instanceof \CommonITILObject || $item instanceof \ITILFollowup || $item instanceof \CommonITILTask
+            || $item instanceof \ITILSolution || $item instanceof \CommonITILValidation;
+    }
+
+    /** Annulabilité estimée d'une opération, montrée dans l'aperçu */
+    public static function undoabilityOf(array $op): string
+    {
+        $kind = (string) ($op['op'] ?? '');
+        $class = ltrim((string) ($op['itemtype'] ?? ''), '\\');
+        return match (true) {
+            $kind === 'delete' && class_exists($class) && is_subclass_of($class, \CommonDBRelation::class) => 'oui (lien recréé)',
+            $kind === 'delete' && (!empty($op['purge']) || (class_exists($class) && is_subclass_of($class, CommonDBTM::class) && !(new $class())->maybeDeleted())) => 'NON : suppression définitive',
+            $kind === 'delete'      => 'oui (restauration depuis la corbeille)',
+            $kind === 'add'         => 'oui (suppression de l\'élément créé ; les notifications déjà parties ne sont pas rappelées)',
+            $kind === 'update'      => 'oui (anciennes valeurs), sauf champs spéciaux signalés',
+            $kind === 'form_submit' => 'partielle : les objets créés sont supprimables, les notifications envoyées ne sont pas rappelées',
+            $kind === 'software_merge' => 'oui (séparation des logiciels fusionnés)',
+            default                 => 'oui',
+        };
     }
 
     /**

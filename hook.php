@@ -132,7 +132,52 @@ function plugin_glpimcp_install(): bool
         }
     }
 
+    // 1.4.0 : confirmation à usage unique atomique + approbation humaine vérifiée dans GLPI
+    $pending_columns = [
+        'status'            => "varchar(20) NOT NULL DEFAULT 'pending' AFTER `summary`",
+        'profiles_id'       => "int {$sign} NOT NULL DEFAULT '0' AFTER `tokens_id`",
+        'context_hash'      => "char(64) NOT NULL DEFAULT '' AFTER `status`",
+        'payload_hash'      => "char(64) NOT NULL DEFAULT '' AFTER `context_hash`",
+        'preview'           => 'longtext AFTER `payload_hash`',
+        'preview_hash'      => "char(64) NOT NULL DEFAULT '' AFTER `preview`",
+        'requires_approval' => "tinyint NOT NULL DEFAULT '0' AFTER `preview_hash`",
+        'approval_reasons'  => 'text AFTER `requires_approval`',
+        'approved_by'       => "int {$sign} NOT NULL DEFAULT '0' AFTER `approval_reasons`",
+        'date_approval'     => 'timestamp NULL DEFAULT NULL AFTER `approved_by`',
+        'approval_hash'     => "char(64) NOT NULL DEFAULT '' AFTER `date_approval`",
+        'claim_token'       => "char(32) NOT NULL DEFAULT '' AFTER `approval_hash`",
+        'date_claim'        => 'timestamp NULL DEFAULT NULL AFTER `claim_token`',
+        'logs_id'           => "int {$sign} NOT NULL DEFAULT '0' AFTER `date_claim`",
+        'error'             => 'text AFTER `logs_id`',
+        'date_mod'          => 'timestamp NULL DEFAULT NULL AFTER `date_expiration`',
+    ];
+    foreach ($pending_columns as $col => $def) {
+        if (!$DB->fieldExists('glpi_plugin_glpimcp_pendingactions', $col)) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_glpimcp_pendingactions` ADD `{$col}` {$def}");
+        }
+    }
+    if (count($DB->request(['FROM' => 'information_schema.STATISTICS', 'WHERE' => ['TABLE_SCHEMA' => $DB->dbdefault, 'TABLE_NAME' => 'glpi_plugin_glpimcp_pendingactions', 'INDEX_NAME' => 'status']])) === 0) {
+        $DB->doQuery('ALTER TABLE `glpi_plugin_glpimcp_pendingactions` ADD KEY `status` (`status`)');
+    }
+    // Propositions antérieures à 1.4.0 : sans contexte ni empreinte, on ne peut pas les lier → retirées
+    $DB->delete('glpi_plugin_glpimcp_pendingactions', ['context_hash' => '']);
+
+    // 1.4.0 : périmètre du jeton = limite. Contexte choisi par glpi_switch_context séparé de l'autorisation.
+    $scope_columns = [
+        'context_entities_id'  => "int {$sign} DEFAULT NULL AFTER `is_recursive`",
+        'context_is_recursive' => 'tinyint DEFAULT NULL AFTER `context_entities_id`',
+    ];
+    foreach ($scope_columns as $col => $def) {
+        if (!$DB->fieldExists('glpi_plugin_glpimcp_tokens', $col)) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_glpimcp_tokens` ADD `{$col}` {$def}");
+        }
+    }
+    // Jetons « profil par défaut » (profiles_id = 0) : fixés au profil par défaut actuel du compte,
+    // ou à son profil unique ; sinon désactivés (jamais d'élargissement silencieux).
+    \GlpiPlugin\Glpimcp\Mcp\TokenScope::migrateLegacyTokens();
+
     Config::setConfigurationValues('plugin:glpimcp', [
+        'approval_scope'       => Config::getConfigurationValues('plugin:glpimcp', ['approval_scope'])['approval_scope'] ?? 'critical',
         'confirm_mode'         => Config::getConfigurationValues('plugin:glpimcp', ['confirm_mode'])['confirm_mode'] ?? 'all',
         'pending_ttl_minutes'  => Config::getConfigurationValues('plugin:glpimcp', ['pending_ttl_minutes'])['pending_ttl_minutes'] ?? 30,
         'max_search_results'   => Config::getConfigurationValues('plugin:glpimcp', ['max_search_results'])['max_search_results'] ?? 50,
@@ -169,7 +214,7 @@ function plugin_glpimcp_uninstall(): bool
 
     $config = new Config();
     $config->deleteConfigurationValues('plugin:glpimcp', array_merge(
-        ['confirm_mode', 'pending_ttl_minutes', 'max_search_results', 'oauth_enabled', 'oauth_dcr_enabled', 'oauth_access_ttl', 'oauth_trusted_resources'],
+        ['approval_scope', 'confirm_mode', 'pending_ttl_minutes', 'max_search_results', 'oauth_enabled', 'oauth_dcr_enabled', 'oauth_access_ttl', 'oauth_trusted_resources'],
         array_keys(\GlpiPlugin\Glpimcp\Mcp\Permissions::defaults())
     ));
 

@@ -50,8 +50,12 @@ class Token extends CommonDBTM
     /**
      * Génère un jeton pour l'utilisateur et renvoie la valeur en clair (affichée une seule fois).
      */
-    public static function generate(int $users_id, string $name, int $profiles_id = 0, ?int $entities_id = null, int $days = 0): string
+    public static function generate(int $users_id, string $name, int $profiles_id = 0, ?int $entities_id = null, int $days = 0, bool $recursive = true): string
     {
+        $profiles_id = \GlpiPlugin\Glpimcp\Mcp\TokenScope::resolveProfile($users_id, $profiles_id);
+        if ($profiles_id <= 0) {
+            throw new \RuntimeException('Aucun profil utilisable pour ce jeton.');
+        }
         $plain = self::PREFIX . bin2hex(random_bytes(24));
         $token = new self();
         $token->add([
@@ -61,12 +65,27 @@ class Token extends CommonDBTM
             'token_hint'      => substr($plain, 0, 9) . '…',
             'profiles_id'     => $profiles_id,
             'entities_id'     => $entities_id,
-            'is_recursive'    => 1,
+            'is_recursive'    => $recursive ? 1 : 0,
             'is_active'       => 1,
             'date_creation'   => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
             'date_expiration' => $days > 0 ? date('Y-m-d H:i:s', strtotime("+{$days} days")) : null,
         ]);
         return $plain;
+    }
+
+    /** L'entité est-elle atteignable par le compte avec ce profil (habilitation directe ou récursive) ? */
+    public static function profileCoversEntity(int $users_id, int $profiles_id, int $entities_id): bool
+    {
+        global $DB;
+        foreach ($DB->request(['FROM' => 'glpi_profiles_users', 'WHERE' => ['users_id' => $users_id, 'profiles_id' => $profiles_id]]) as $pu) {
+            if ((int) $pu['entities_id'] === $entities_id) {
+                return true;
+            }
+            if ($pu['is_recursive'] && in_array($entities_id, array_map('intval', getSonsOf('glpi_entities', (int) $pu['entities_id'])), true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -134,7 +153,7 @@ class Token extends CommonDBTM
 
         echo '<div class="card"><div class="card-body">';
         echo '<h3 class="card-title"><i class="ti ti-robot me-2"></i>' . __('Connect an AI assistant to GLPI', 'glpimcp') . '</h3>';
-        echo '<p>' . __('The assistant will act with exactly your GLPI rights (profile and entities). Every change is shown to you and must be confirmed before it is applied.', 'glpimcp') . '</p>';
+        echo '<p>' . __('The assistant acts within your GLPI rights, limited to the profile and entity chosen for each token. Changes are previewed (unless the administrator chose immediate application of ordinary changes); critical actions always require your own approval in GLPI.', 'glpimcp') . '</p>';
         echo '<p><strong>' . __('MCP server URL', 'glpimcp') . ' :</strong> <code>' . htmlescape($endpoint) . '</code></p>';
 
         if (!empty($_SESSION['glpimcp_new_token'])) {
@@ -156,6 +175,9 @@ class Token extends CommonDBTM
         echo '</tr></thead><tbody>';
         foreach ($rows as $row) {
             $profile = $row['profiles_id'] > 0 ? \Dropdown::getDropdownName('glpi_profiles', $row['profiles_id']) : __('Default profile', 'glpimcp');
+            $profile .= ' · ' . ($row['entities_id'] !== null
+                ? \Dropdown::getDropdownName('glpi_entities', (int) $row['entities_id']) . ($row['is_recursive'] ? ' ' . __('(with sub-entities)', 'glpimcp') : '')
+                : __('all entities of the profile', 'glpimcp'));
             echo '<tr>';
             echo '<td>' . htmlescape($row['name']) . '</td>';
             echo '<td><code>' . htmlescape($row['token_hint']) . '</code></td>';
@@ -185,11 +207,26 @@ class Token extends CommonDBTM
             echo '<input type="text" name="name" class="form-control" placeholder="Claude, Copilot…" maxlength="100"></div>';
 
             echo '<div class="col-auto"><label class="form-label">' . __('Profile used by the assistant', 'glpimcp') . '</label>';
-            echo '<select name="profiles_id" class="form-select"><option value="0">' . __('Default profile', 'glpimcp') . '</option>';
+            $user = new User();
+            $default_pid = $user->getFromDB($users_id) ? (int) $user->fields['profiles_id'] : 0;
+            echo '<select name="profiles_id" class="form-select">';
             foreach (Profile_User::getUserProfiles($users_id) as $pid) {
-                echo '<option value="' . (int) $pid . '">' . htmlescape(\Dropdown::getDropdownName('glpi_profiles', $pid)) . '</option>';
+                echo '<option value="' . (int) $pid . '"' . ((int) $pid === $default_pid ? ' selected' : '') . '>' . htmlescape(\Dropdown::getDropdownName('glpi_profiles', $pid)) . '</option>';
             }
-            echo '</select></div>';
+            echo '</select><small class="text-muted">' . __('Fixed limit: the assistant can never use another profile with this token.', 'glpimcp') . '</small></div>';
+
+            echo '<div class="col-auto"><label class="form-label">' . __('Entity', 'glpimcp') . '</label>';
+            echo '<select name="entities_id" class="form-select"><option value="">' . __('All entities of the profile', 'glpimcp') . '</option>';
+            $seen = [];
+            foreach ($DB->request(['SELECT' => ['entities_id'], 'DISTINCT' => true, 'FROM' => 'glpi_profiles_users', 'WHERE' => ['users_id' => $users_id]]) as $pu) {
+                $eid = (int) $pu['entities_id'];
+                if (!isset($seen[$eid])) {
+                    $seen[$eid] = true;
+                    echo '<option value="' . $eid . '">' . htmlescape(\Dropdown::getDropdownName('glpi_entities', $eid)) . '</option>';
+                }
+            }
+            echo '</select><div class="form-check mt-1"><input class="form-check-input" type="checkbox" name="is_recursive" value="1" id="glpimcp_rec" checked>'
+                . '<label class="form-check-label" for="glpimcp_rec">' . __('Include sub-entities', 'glpimcp') . '</label></div></div>';
 
             echo '<div class="col-auto"><label class="form-label">' . __('Validity', 'glpimcp') . '</label>';
             echo '<select name="days" class="form-select">';
@@ -202,6 +239,19 @@ class Token extends CommonDBTM
             echo '</form>';
         }
         echo '</div></div>';
+
+        $pending = $DB->request(['FROM' => 'glpi_plugin_glpimcp_pendingactions', 'WHERE' => [
+            'users_id' => $users_id, 'status' => 'pending', 'requires_approval' => 1, 'approved_by' => 0,
+            'date_expiration' => ['>', date('Y-m-d H:i:s')],
+        ], 'ORDER' => 'id DESC']);
+        if (count($pending) > 0) {
+            echo '<div class="card mt-3 border-warning"><div class="card-header"><h3 class="card-title"><i class="ti ti-shield-check me-2"></i>' . __('Actions waiting for your approval', 'glpimcp') . '</h3></div><div class="list-group list-group-flush">';
+            foreach ($pending as $p) {
+                echo '<a class="list-group-item list-group-item-action" href="' . htmlescape($CFG_GLPI['root_doc'] . '/plugins/glpimcp/front/approval.php?uuid=' . rawurlencode($p['uuid'])) . '">'
+                    . htmlescape((string) $p['summary']) . ' <small class="text-muted">— ' . Html::convDateTime($p['date_creation']) . '</small></a>';
+            }
+            echo '</div></div>';
+        }
 
         echo '<div class="card mt-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-history me-2"></i>' . __('AI actions made with this account', 'glpimcp') . '</h3></div><div class="card-body p-0">';
         LogView::renderTable(['users_id' => $users_id], 20, false);

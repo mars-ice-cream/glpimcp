@@ -12,6 +12,8 @@ use Glpi\Http\Firewall;
 use Glpi\Plugin\Hooks;
 use Glpi\Security\Attribute\SecurityStrategy;
 use GlpiPlugin\Glpimcp\Mcp\Context;
+use GlpiPlugin\Glpimcp\Mcp\ScopeException;
+use GlpiPlugin\Glpimcp\Mcp\TokenScope;
 use GlpiPlugin\Glpimcp\Mcp\Server;
 use GlpiPlugin\Glpimcp\Token;
 use Plugin;
@@ -64,7 +66,12 @@ final class McpController extends AbstractController
             );
         }
 
-        if (!self::startUserSession($token, $request)) {
+        try {
+            $started = self::startUserSession($token, $request);
+        } catch (ScopeException $e) {
+            return new JsonResponse(Server::error(null, -32003, 'Forbidden: ' . $e->getMessage()), 403, $headers);
+        }
+        if (!$started) {
             return new JsonResponse(
                 Server::error(null, -32001, 'Forbidden: compte GLPI inactif, supprimé ou sans profil.'),
                 403,
@@ -134,18 +141,8 @@ final class McpController extends AbstractController
             return false;
         }
 
-        // Profil : en-tête X-GLPI-Profile > profil choisi pour le jeton > profil par défaut
-        $profile = (int) ($request->headers->get('X-GLPI-Profile') ?: $token['profiles_id']);
-        if ($profile > 0 && isset($_SESSION['glpiprofiles'][$profile]) && $profile !== (int) $_SESSION['glpiactiveprofile']['id']) {
-            Session::changeProfile($profile);
-        }
-
-        // Entité : en-tête X-GLPI-Entity > entité choisie pour le jeton
-        $entity = $request->headers->get('X-GLPI-Entity');
-        $entity = $entity !== null && $entity !== '' ? (int) $entity : ($token['entities_id'] !== null ? (int) $token['entities_id'] : null);
-        if ($entity !== null) {
-            Session::changeActiveEntities($entity, (bool) $token['is_recursive']);
-        }
+        // Profil et entités : le périmètre accordé au jeton est une limite (refus explicite au-delà)
+        TokenScope::apply($token, $request->headers->get('X-GLPI-Profile'), $request->headers->get('X-GLPI-Entity'));
 
         $lang = $request->headers->get('Accept-Language');
         if ($lang && empty($user->fields['language'])) {

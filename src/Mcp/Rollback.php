@@ -64,7 +64,7 @@ final class Rollback
                 // Comparaison des valeurs : un objet modifié puis remis en l'état n'est pas un conflit
                 $changed = [];
                 foreach ($date_mod_after as $field => $value) {
-                    if (array_key_exists($field, $item->fields) && (string) $item->fields[$field] !== (string) $value) {
+                    if (array_key_exists($field, $item->fields) && self::scalar($item->fields[$field]) !== self::scalar($value)) {
                         $changed[] = $field;
                     }
                 }
@@ -124,6 +124,32 @@ final class Rollback
         ];
     }
 
+    private static function scalar(mixed $v): string
+    {
+        return is_array($v) || is_object($v) ? (string) json_encode($v) : (string) $v;
+    }
+
+    /**
+     * Revérification au moment de l'exécution d'une annulation : un technicien a pu modifier un élément entre
+     * l'aperçu de l'annulation et sa confirmation. Tout conflit qui n'a pas été montré (et accepté) à l'aperçu,
+     * ou tout changement des opérations prévues, bloque l'exécution.
+     */
+    public static function recheck(int $log_id, array $proposed_ops, array $accepted_conflicts): void
+    {
+        $plan = self::plan($log_id, true);
+        $new = array_values(array_diff($plan['conflits'], $accepted_conflicts));
+        if ($new !== []) {
+            throw new ToolException(
+                "Annulation bloquée : des éléments ont été modifiés depuis l'aperçu de l'annulation. Rien n'a été modifié. "
+                . "Montre ces nouveaux conflits à l'utilisateur et refais l'aperçu (force=true seulement s'il l'accepte).",
+                ['nouveaux_conflits' => $new]
+            );
+        }
+        if (json_encode($plan['ops']) !== json_encode($proposed_ops)) {
+            throw new ToolException("Annulation bloquée : les éléments à rétablir ont changé depuis l'aperçu (élément supprimé entre-temps…). Rien n'a été modifié ; refais l'aperçu.");
+        }
+    }
+
     /**
      * Ligne de journal présentée de façon lisible.
      */
@@ -141,6 +167,14 @@ final class Rollback
             'résumé'      => $row['summary'],
             'annulable'   => $row['status'] === 'exécuté' && $undo !== [] && !(int) $row['rolled_back_by'],
         ];
+        $irr = json_decode((string) ($row['irreversible'] ?? ''), true) ?: [];
+        if ($row['status'] === 'exécuté') {
+            $out['annulabilité'] = $undo === [] ? 'aucune' : ($irr === [] ? 'totale' : 'partielle');
+        }
+        $det = json_decode((string) ($row['details'] ?? ''), true) ?: [];
+        if (!empty($det['approbation'])) {
+            $out['approuvé_dans_glpi_par'] = $det['approbation'];
+        }
         if ((int) $row['rolled_back_by']) {
             $out['annulée_par_journal'] = (int) $row['rolled_back_by'];
         }

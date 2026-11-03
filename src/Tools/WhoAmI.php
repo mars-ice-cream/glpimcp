@@ -90,7 +90,13 @@ class WhoAmI extends Tool
                 'nom'       => $ctx->profileName(),
                 'interface' => Session::getCurrentInterface() === 'helpdesk' ? 'simplifiée (self-service)' : 'standard',
             ],
-            'profils_disponibles' => $profiles,
+            'profils_du_compte' => $profiles,
+            'périmètre_du_jeton' => [
+                'profil'  => \Dropdown::getDropdownName('glpi_profiles', (int) $ctx->token['profiles_id']),
+                'entité'  => $ctx->token['entities_id'] !== null ? \Dropdown::getDropdownName('glpi_entities', (int) $ctx->token['entities_id']) : 'toutes celles du profil',
+                'sous_entités' => (bool) $ctx->token['is_recursive'],
+                'note'    => 'Limite fixée à la création du jeton : seul ce profil est utilisable, et seulement ces entités.',
+            ],
             'entité_active'   => [
                 'id'        => (int) ($_SESSION['glpiactive_entity'] ?? 0),
                 'nom'       => $_SESSION['glpiactive_entity_name'] ?? '',
@@ -101,8 +107,9 @@ class WhoAmI extends Tool
             'droits'          => $rights,
             'jeton'           => ['nom' => $ctx->token['name'], 'expire' => $ctx->token['date_expiration'] ?? 'jamais'],
             'mode_confirmation' => $ctx->config('confirm_mode', 'all') === 'all'
-                ? 'toutes les écritures demandent une confirmation'
-                : 'seules les écritures sensibles demandent une confirmation',
+                ? 'toutes les écritures demandent une confirmation (glpi_confirm_action)'
+                : 'mode « sensibles » : les écritures ordinaires sont exécutées sans second appel ; les sensibles demandent glpi_confirm_action',
+            'approbation_humaine' => \GlpiPlugin\Glpimcp\Mcp\Approval::describeScope($ctx),
             'types_d_actions_désactivés_par_l_admin' => array_values(array_map(
                 fn($k) => \GlpiPlugin\Glpimcp\Mcp\Permissions::CATEGORIES[$k][0],
                 array_keys(array_filter(\GlpiPlugin\Glpimcp\Mcp\Permissions::all(), fn($on) => !$on))
