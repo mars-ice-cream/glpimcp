@@ -316,16 +316,21 @@ final class PendingActions
             'annulation_forcée' => !empty($meta['force']) ? true : null,
         ], fn($v) => $v !== null);
 
+        $reserved = 0;
         try {
             // Réglages revérifiés à l'exécution (ils ont pu changer entre l'aperçu et la confirmation)
             Permissions::assertOps($ops, $rollback_of > 0);
+            if ($rollback_of === 0) {
+                $reserved = RateLimiter::reserveTickets($ctx, $ops);
+            }
             $results = Operations::execute($ops, $journal, $before_commit);
         } catch (ToolException $e) {
+            RateLimiter::settleTickets($ctx, $reserved, 0);
             AuditLog::write($ctx, $tool, 'échec', $summary, $trace + ['erreur' => $e->getMessage(), 'détails' => $e->getDetails(), 'operations' => $ops], null, $rollback_of);
             throw $e;
         }
 
-        RateLimiter::recordWrite($ctx, $ops);
+        RateLimiter::settleTickets($ctx, $reserved, RateLimiter::actualTickets($ops, $results));
         $undoability = Operations::undoability($journal);
         $log_id = AuditLog::write($ctx, $tool, 'exécuté', $summary, $trace + [
             'operations' => $ops, 'résultats' => $results, 'annulabilité' => $undoability,

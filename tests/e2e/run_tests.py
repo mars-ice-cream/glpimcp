@@ -581,6 +581,16 @@ def garde_fou_quota_de_tickets():
             propose_confirm(TOK["limited"], "glpi_ticket_create", {"title": f"{PREFIX} quota {i}", "description": "test de quota"})
         refused(TOK["limited"], "glpi_ticket_create", {"title": f"{PREFIX} quota 3", "description": "test de quota"}, contains="Quota")
         assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE name LIKE '{PREFIX} quota%'") == 2
+        # Confirmations simultanées de propositions distinctes à la limite : une seule passe
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_tickets_per_hour=3 WHERE id={tid}")
+        props = [ok(TOK["limited"], "glpi_ticket_create", {"title": f"{PREFIX} course quota {i}", "description": "test"}) for i in range(3)]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+            res = list(ex.map(lambda p: tool(TOK["limited"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}), props))
+        for err, d in res:
+            if not err:
+                journal_ids.append(d["journal_id"])
+        assert sum(1 for err, d in res if not err) == 1, res
+        assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE name LIKE '{PREFIX} course quota%'") == 1, "quota dépassé par des confirmations simultanées"
     finally:
         db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_tickets_per_hour=NULL WHERE id={tid}")
         db(f"DELETE FROM glpi_plugin_glpimcp_counters WHERE k='tk:u{uid}'")
@@ -626,6 +636,14 @@ def client_gere_profil_impose_sans_page_de_consentement():
         assert r4.status_code == 403 and "IP" in r4.json()["error"]["message"], r4.text[:200]
         db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET allowed_ips='127.0.0.1, ::1' WHERE client_id='{cid}'")
         assert rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code == 200
+        # Code obtenu avant un changement de profil imposé : inutilisable ; accès existant : refusé
+        r5, v5 = oauth_code_flow(s, cid, redirect)
+        code5 = up.parse_qs(up.urlparse(r5.headers["Location"]).query)["code"][0]
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET forced_profiles_id={FIX['P_TECH']} WHERE client_id='{cid}'")
+        bad = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code5, "redirect_uri": redirect,
+                            "client_id": cid, "code_verifier": v5}, timeout=30)
+        assert bad.status_code == 400 and bad.json()["error"] == "invalid_grant", bad.text[:200]
+        assert rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code == 403, "accès à l'ancien profil imposé encore valide"
     finally:
         db(f"UPDATE glpi_plugin_glpimcp_tokens t JOIN glpi_plugin_glpimcp_oauthclients c ON c.id=t.oauthclients_id SET t.is_active=0 WHERE c.client_id='{cid}'")
         db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE client_id='{cid}'")

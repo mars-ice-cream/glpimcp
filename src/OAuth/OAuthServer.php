@@ -413,6 +413,10 @@ final class OAuthServer
             if (isset($req['redirect_uri']) && $req['redirect_uri'] !== $code['redirect_uri']) {
                 throw new OAuthException('invalid_grant', 'redirect_uri différent de la demande d\'autorisation.');
             }
+            // Politique actuelle du client : un code émis avant un changement de profil imposé est refusé
+            if (ClientPolicy::isManaged($client) && (int) $code['profiles_id'] !== (int) $client['forced_profiles_id']) {
+                throw new OAuthException('invalid_grant', 'Autorisation obsolète (politique du client modifiée) : reconnectez-vous.');
+            }
             $verifier = (string) ($req['code_verifier'] ?? '');
             $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
             if ($verifier === '' || !hash_equals($code['code_challenge'], $challenge)) {

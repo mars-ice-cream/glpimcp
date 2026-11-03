@@ -99,6 +99,8 @@ if (isset($_POST['client_policy'])) {
     if ($before && ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed)) {
         // Profil imposé changé : les accès accordés avec un autre profil sont coupés (reconnexion = nouveau profil)
         $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['oauthclients_id' => $cid, 'NOT' => ['profiles_id' => $profile]]);
+        // … et les codes d'autorisation pas encore échangés sont invalidés
+        $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
     }
     AuditLog::write(
         new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),

@@ -26,19 +26,25 @@ final class RateLimiter
 {
     private const TABLE = 'glpi_plugin_glpimcp_counters';
 
-    /** Incrémente le compteur de la fenêtre courante et renvoie sa nouvelle valeur. */
+    /**
+     * Incrémente le compteur de la fenêtre courante et renvoie SA valeur après cet incrément, de façon
+     * atomique (UPDATE … LAST_INSERT_ID(expr) : la valeur lue est celle écrite par cette requête, même
+     * en cas d'appels simultanés). $by peut être négatif (libération d'une réservation).
+     */
     public static function hit(string $key, int $window, int $by = 1): int
     {
         global $DB;
         $win = intdiv(time(), $window);
         $k = $DB->escape(mb_substr($key, 0, 100));
         $exp = ($win + 1) * $window;
-        $DB->doQuery("INSERT INTO `" . self::TABLE . "` (`k`, `win`, `n`, `exp`) VALUES ('{$k}', {$win}, {$by}, {$exp})
-            ON DUPLICATE KEY UPDATE `n` = `n` + {$by}");
+        $table = self::TABLE;
+        $DB->doQuery("INSERT IGNORE INTO `{$table}` (`k`, `win`, `n`, `exp`) VALUES ('{$k}', {$win}, 0, {$exp})");
+        $DB->doQuery("UPDATE `{$table}` SET `n` = LAST_INSERT_ID(GREATEST(0, CAST(`n` AS SIGNED) + ({$by}))) WHERE `k` = '{$k}' AND `win` = {$win}");
+        $value = (int) ($DB->doQuery('SELECT LAST_INSERT_ID() AS v')->fetch_assoc()['v'] ?? 0);
         if (random_int(1, 200) === 1) {
-            $DB->delete(self::TABLE, ['exp' => ['<', time() - 60]]);
+            $DB->delete($table, ['exp' => ['<', time() - 60]]);
         }
-        return self::peek($key, $window);
+        return $value;
     }
 
     public static function peek(string $key, int $window): int
@@ -110,7 +116,7 @@ final class RateLimiter
     public static function checkWrite(Context $ctx, array $ops, bool $count): void
     {
         $l = self::limits($ctx->token);
-        $tickets = self::ticketsIn($ops);
+        $tickets = self::estimateTickets($ops);
         if ($l['writes_per_hour'] > 0) {
             $n = $count ? self::hit('w:u' . $ctx->users_id, 3600) : self::peek('w:u' . $ctx->users_id, 3600);
             if ($n > $l['writes_per_hour']) {
@@ -118,9 +124,10 @@ final class RateLimiter
                 throw new ToolException("Quota atteint : {$l['writes_per_hour']} écritures par heure pour ce compte. Réessaie dans " . ceil(self::retryAfter(3600) / 60) . ' min.', ['quota' => 'écritures/heure', 'réessayer_dans_s' => self::retryAfter(3600)]);
             }
         }
+        // Vérification indicative (l'aperçu) ; la réservation atomique se fait à l'exécution (reserveTickets)
         if ($tickets > 0 && $l['tickets_per_hour'] > 0 && self::peek('tk:u' . $ctx->users_id, 3600) + $tickets > $l['tickets_per_hour']) {
             self::rejected($ctx->token, "plus de {$l['tickets_per_hour']} tickets par heure");
-            throw new ToolException("Quota atteint : {$l['tickets_per_hour']} tickets par heure pour ce compte. Réessaie dans " . ceil(self::retryAfter(3600) / 60) . ' min.', ['quota' => 'tickets/heure', 'réessayer_dans_s' => self::retryAfter(3600)]);
+            throw self::ticketQuota($l['tickets_per_hour']);
         }
         $cid = (int) ($ctx->token['oauthclients_id'] ?? 0);
         if ($cid > 0 && $l['client_writes_per_hour'] > 0) {
@@ -132,21 +139,96 @@ final class RateLimiter
         }
     }
 
-    /** Après exécution : tickets réellement créés */
-    public static function recordWrite(Context $ctx, array $ops): void
+    private static function ticketQuota(int $limit): ToolException
     {
-        $tickets = self::ticketsIn($ops);
-        if ($tickets > 0) {
-            self::hit('tk:u' . $ctx->users_id, 3600, $tickets);
+        return new ToolException("Quota atteint : {$limit} tickets par heure pour ce compte. Réessaie dans " . ceil(self::retryAfter(3600) / 60) . ' min.', ['quota' => 'tickets/heure', 'réessayer_dans_s' => self::retryAfter(3600)]);
+    }
+
+    /**
+     * Réserve atomiquement, avant l'exécution, les tickets que le lot peut créer. Deux exécutions
+     * simultanées ne peuvent pas passer toutes les deux au-delà du quota. Renvoie le nombre réservé.
+     * @throws ToolException
+     */
+    public static function reserveTickets(Context $ctx, array $ops): int
+    {
+        $n = self::estimateTickets($ops);
+        if ($n <= 0) {
+            return 0;
+        }
+        $limit = self::limits($ctx->token)['tickets_per_hour'];
+        $after = self::hit('tk:u' . $ctx->users_id, 3600, $n);
+        if ($limit > 0 && $after > $limit) {
+            self::hit('tk:u' . $ctx->users_id, 3600, -$n);
+            self::rejected($ctx->token, "plus de {$limit} tickets par heure");
+            throw self::ticketQuota($limit);
+        }
+        return $n;
+    }
+
+    /** Ajuste la réservation au nombre réellement créé (0 en cas d'échec : réservation libérée). */
+    public static function settleTickets(Context $ctx, int $reserved, int $actual): void
+    {
+        if ($actual !== $reserved) {
+            self::hit('tk:u' . $ctx->users_id, 3600, $actual - $reserved);
         }
     }
 
+    /**
+     * Majorant des objets ITIL créés par un lot : créations directes de tickets/changements/problèmes,
+     * et pour une soumission de formulaire, le nombre de ses destinations (chacune peut créer un objet).
+     */
+    public static function estimateTickets(array $ops): int
+    {
+        $n = 0;
+        foreach ($ops as $op) {
+            $kind = (string) ($op['op'] ?? '');
+            $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
+            if ($kind === 'add' && in_array($type, self::ITIL, true)) {
+                $n++;
+            } elseif ($kind === 'form_submit') {
+                $n += max(1, self::formDestinations((int) ($op['forms_id'] ?? 0)));
+            }
+        }
+        return $n;
+    }
+
+    /** Objets ITIL réellement créés, d'après les résultats d'exécution */
+    public static function actualTickets(array $ops, array $results): int
+    {
+        $n = 0;
+        foreach ($ops as $i => $op) {
+            $kind = (string) ($op['op'] ?? '');
+            $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
+            if ($kind === 'add' && in_array($type, self::ITIL, true)) {
+                $n++;
+            } elseif ($kind === 'form_submit') {
+                foreach ($results[$i]['objets_créés'] ?? [] as $obj) {
+                    if (in_array(ltrim((string) ($obj['itemtype'] ?? ''), '\\'), self::ITIL, true)) {
+                        $n++;
+                    }
+                }
+            }
+        }
+        return $n;
+    }
+
+    private const ITIL = ['Ticket', 'Change', 'Problem'];
+
+    private static function formDestinations(int $forms_id): int
+    {
+        if ($forms_id <= 0 || !class_exists(\Glpi\Form\Destination\FormDestination::class)) {
+            return 1;
+        }
+        return countElementsInTable(\Glpi\Form\Destination\FormDestination::getTable(), ['forms_forms_id' => $forms_id]);
+    }
+
+    /** @deprecated garde la compatibilité des tests unitaires */
     public static function ticketsIn(array $ops): int
     {
         $n = 0;
         foreach ($ops as $op) {
             $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
-            if ((($op['op'] ?? '') === 'add' && in_array($type, ['Ticket', 'Change', 'Problem'], true)) || ($op['op'] ?? '') === 'form_submit') {
+            if ((($op['op'] ?? '') === 'add' && in_array($type, self::ITIL, true)) || ($op['op'] ?? '') === 'form_submit') {
                 $n++;
             }
         }

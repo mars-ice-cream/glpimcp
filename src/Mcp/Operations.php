@@ -420,7 +420,7 @@ final class Operations
                         $set = AnswersHandler::getInstance()->saveAnswers($form, $answers, (int) Session::getLoginUserID());
                         $created = [];
                         foreach ($set->getCreatedItems() as $created_item) {
-                            $created[] = ['type' => $created_item::getTypeName(1), 'id' => $created_item->getID(), 'nom' => $created_item->getName(), 'url' => Items::url($created_item)];
+                            $created[] = ['type' => $created_item::getTypeName(1), 'itemtype' => $created_item::class, 'id' => $created_item->getID(), 'nom' => $created_item->getName(), 'url' => Items::url($created_item)];
                             $journal['undo'][] = ['op' => 'delete', 'itemtype' => $created_item::class, 'id' => $created_item->getID(), 'purge' => false, '_label' => 'mettre à la corbeille ' . $created_item->getNameID()];
                             self::recordState($journal, $created_item);
                         }
