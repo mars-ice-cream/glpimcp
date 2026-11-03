@@ -22,3 +22,42 @@ jobs:
         run: sudo apt-get install -y gettext >/dev/null && msgfmt --check -o /dev/null locales/fr_FR.po
       - name: XML du catalogue
         run: python3 -c "import xml.dom.minidom,sys; xml.dom.minidom.parse('glpimcp.xml')"
+
+  e2e:
+    name: Bout en bout (GLPI 11 jetable)
+    runs-on: ubuntu-latest
+    needs: lint-and-unit
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      GLPI_VERSION: '11.0.12'
+      DB_HOST: 127.0.0.1
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: glpi_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, mbstring, mysqli, gd, curl, zip, bz2, exif, sodium, opcache
+          ini-values: memory_limit=512M
+      - name: Client MySQL et requests
+        run: sudo apt-get install -y mariadb-client >/dev/null && pip install requests
+      - name: GLPI jetable, plugin, données de test
+        run: bash tests/e2e/ci_setup.sh
+      - name: Tests de bout en bout
+        run: bash tests/e2e/ci_run.sh
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: |
+          tail -n 80 "$RUNNER_TEMP/glpimcp-e2e/php-server.log" || true
+          tail -n 80 "$RUNNER_TEMP/glpimcp-e2e/glpi/files/_log/php-errors.log" || true
+

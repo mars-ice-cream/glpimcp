@@ -60,5 +60,29 @@ check('config', Permissions::categoriesOf(['op' => 'config']), ['config']);
 check('fusion logiciels', Permissions::categoriesOf(['op' => 'software_merge']), ['software']);
 check('défauts risqués désactivés', array_keys(array_filter(Permissions::defaults(), fn($v) => $v === 0)), ['perm_security', 'perm_purge', 'perm_users_groups', 'perm_rights', 'perm_config']);
 
+echo "Approbation humaine (politique)\n";
+use GlpiPlugin\Glpimcp\Mcp\Approval;
+use GlpiPlugin\Glpimcp\Mcp\Operations;
+check('création ordinaire', Approval::reasons([['op' => 'add', 'itemtype' => 'Computer']], [], false, 'critical'), []);
+check('purge', count(Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], [], true, 'critical')), 1);
+check('droits de profil', Approval::reasons([['op' => 'profile_rights']], [], true, 'critical'), ['Droits des profils']);
+check('habilitation', count(Approval::reasons([['op' => 'add', 'itemtype' => 'Profile_User']], [], true, 'critical')), 1);
+check('configuration', count(Approval::reasons([['op' => 'config']], [], true, 'critical')), 1);
+check('annulation simple d\'une création', Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], ['rollback_of' => 3], true, 'critical'), []);
+check('annulation forcée', count(Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], ['rollback_of' => 3, 'force' => true], true, 'critical')), 2);
+check('corbeille : portée critique', Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer']], [], true, 'critical'), []);
+check('corbeille : portée sensible', count(Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer']], [], true, 'sensitive')), 1);
+$row = ['uuid' => 'conf_x', 'users_id' => 2, 'tokens_id' => 5, 'profiles_id' => 4, 'context_hash' => 'c', 'payload_hash' => 'p', 'preview_hash' => 'v'];
+check('empreinte stable', Approval::hash($row), Approval::hash($row));
+check('empreinte liée au contexte', Approval::hash($row) === Approval::hash(['context_hash' => 'autre'] + $row), false);
+check('empreinte liée à l\'aperçu', Approval::hash($row) === Approval::hash(['preview_hash' => 'autre'] + $row), false);
+
+echo "Annulabilité\n";
+check('totale', Operations::undoability(['undo' => [['op' => 'delete']], 'irréversible' => []])['niveau'], 'totale');
+check('partielle', Operations::undoability(['undo' => [['op' => 'delete']], 'irréversible' => ['Notifications e-mail éventuellement générées pour X']])['niveau'], 'partielle');
+check('aucune', Operations::undoability(['undo' => [], 'irréversible' => ['Suppression définitive de X']])['niveau'], 'aucune');
+check('effets externes', count(Operations::undoability(['undo' => [1], 'irréversible' => ['Notifications e-mail éventuellement générées pour X', 'Champ spécial']])['effets_externes']), 1);
+check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NON'), true);
+
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);
