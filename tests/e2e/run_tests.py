@@ -809,6 +809,18 @@ def outils_interdits_et_politique_par_profil():
         admin_post("/plugins/glpimcp/front/config.form.php", {"update_banned": "1"})
     assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}") == 0
     assert tool_names(TOK["selfservice"]) == base, "restrictions non levées"
+    # Onglet du profil : seuls les outils accessibles avec les droits GLPI du profil sont proposés
+    s, _ = admin_post("/plugins/glpimcp/front/config.form.php", {})
+    tab = lambda pid: s.get(BASE + "/ajax/common.tabs.php", params={"_target": "/front/profile.form.php", "_itemtype": "Profile",
+                            "_glpi_tab": "GlpiPlugin\\Glpimcp\\ProfilePolicy$1", "id": pid}, timeout=30).text
+    ss_tab = tab(ss_profile)
+    assert 'value="glpi_search"' in ss_tab and 'value="glpi_config_set"' not in ss_tab, "outil inaccessible proposé au Self-Service"
+    assert 'value="glpi_config_set"' in tab(4), "outil manquant pour le Super-Admin"
+    # Tout ce qui est affiché coché = aucune restriction (les outils masqués n'en créent pas)
+    shown = sorted(set(re.findall(r'name="tools\[\]" value="([^"]+)"', ss_tab)))
+    admin_post("/plugins/glpimcp/front/profilepolicy.form.php", {"profiles_id": ss_profile, "save": "1", "tools[]": shown,
+               "categories[]": re.findall(r'name="categories\[\]" value="([a-z_]+)"[^>]*checked', ss_tab)})
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}") == 0, "restriction inventée par les outils masqués"
 
 
 @test

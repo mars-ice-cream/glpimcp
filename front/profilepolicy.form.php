@@ -26,7 +26,8 @@ if (isset($_POST['clear'])) {
         (array) ($_POST['categories'] ?? []),
         Permissions::bannedTools(),
         ProfilePolicy::allToolNames(),
-        [Permissions::class, 'globallyEnabled']
+        [Permissions::class, 'globallyEnabled'],
+        ProfilePolicy::availableFor($profiles_id)
     ));
 }
 Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));

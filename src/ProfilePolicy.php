@@ -78,6 +78,48 @@ class ProfilePolicy extends CommonDBTM
         return $groups;
     }
 
+    /**
+     * Outils auxquels les droits GLPI du profil donnent accès (même règle que la liste envoyée à l'IA),
+     * évalués en prenant ce profil le temps du calcul, puis en rétablissant la session.
+     * @return string[]
+     */
+    public static function availableFor(int $profiles_id): array
+    {
+        $profile = new Profile();
+        if (!$profile->getFromDB($profiles_id)) {
+            return [];
+        }
+        $profile->cleanProfile();
+        $saved = $_SESSION['glpiactiveprofile'] ?? null;
+        $names = [];
+        try {
+            // Les seuls droits de ce profil (pas de fusion avec le profil de l'administrateur : un droit absent
+            // du profil évalué doit rester absent), avec les entités de la session courante
+            $_SESSION['glpiactiveprofile'] = $profile->fields + ['entities' => $saved['entities'] ?? []];
+            $ctx = new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']);
+            foreach (Server::toolClasses() as $class) {
+                if (!class_exists($class)) {
+                    continue;
+                }
+                /** @var Tool $t */
+                $t = new $class();
+                try {
+                    if (in_array($t->name(), Permissions::ALWAYS_ON, true) || $t->isAvailable($ctx)) {
+                        $names[] = $t->name();
+                    }
+                } catch (\Throwable) {
+                }
+            }
+        } finally {
+            if ($saved === null) {
+                unset($_SESSION['glpiactiveprofile']);
+            } else {
+                $_SESSION['glpiactiveprofile'] = $saved;
+            }
+        }
+        return $names;
+    }
+
     /** @return string[] */
     public static function allToolNames(): array
     {
@@ -136,8 +178,20 @@ class ProfilePolicy extends CommonDBTM
 
         echo '<h4>' . __('Tools', 'glpimcp') . '</h4>';
         echo '<p class="text-muted">' . __('Uncheck the tools this profile must not use. A tool added by a future version is allowed only if every tool is checked here.', 'glpimcp') . '</p>';
+        // Seuls les outils auxquels les droits GLPI du profil donnent accès sont proposés
+        $available = self::availableFor($profiles_id);
+        $hidden = [];
         echo '<div class="row g-3 mt-1">';
         foreach (self::toolGroups() as $group => $tools) {
+            foreach (array_keys($tools) as $name) {
+                if (!in_array($name, $available, true)) {
+                    $hidden[] = $tools[$name][0];
+                    unset($tools[$name]);
+                }
+            }
+            if ($tools === []) {
+                continue;
+            }
             echo '<div class="col-md-4"><div class="border rounded p-2 h-100"><strong>' . htmlescape($group) . '</strong>';
             foreach ($tools as $name => [$title, $write]) {
                 $always = in_array($name, Permissions::ALWAYS_ON, true);
@@ -153,6 +207,12 @@ class ProfilePolicy extends CommonDBTM
             echo '</div></div>';
         }
         echo '</div>';
+        if ($hidden !== []) {
+            echo '<details class="mt-2"><summary class="text-muted">' . sprintf(
+                __('%d tools not shown: the GLPI rights of this profile do not give access to them', 'glpimcp'),
+                count($hidden)
+            ) . '</summary><small class="text-muted">' . htmlescape(implode(', ', $hidden)) . '</small></details>';
+        }
 
         echo '<h4 class="mt-4">' . __('Action types', 'glpimcp') . '</h4>';
         echo '<p class="text-muted">' . __('Uncheck an action type to withdraw it from this profile, including through generic tools (create, update, apply operations).', 'glpimcp') . '</p>';

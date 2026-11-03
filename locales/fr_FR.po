@@ -513,3 +513,6 @@ msgstr "interdit pour tout le monde"
 
 msgid "withdrawn:"
 msgstr "retirés :"
+
+msgid "%d tools not shown: the GLPI rights of this profile do not give access to them"
+msgstr "%d outils non affichés : les droits GLPI de ce profil n'y donnent pas accès"

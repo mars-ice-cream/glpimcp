@@ -188,19 +188,23 @@ final class Permissions
      * envoyées : leur état propre au profil est conservé tel quel, pour qu'une restriction du profil ne
      * disparaisse pas en silence quand l'interdiction ou la désactivation globale est levée plus tard.
      *
+     * Il en va de même des outils non affichés parce que les droits GLPI du profil n'y donnent pas accès.
+     *
      * @param string[] $checked  outils cochés
      * @param string[] $kept     types d'action cochés
      * @param string[] $banned   outils interdits partout
      * @param string[] $all      tous les outils connus
      * @param callable(string): bool $globally_enabled
+     * @param string[]|null $shown outils affichés dans le formulaire (null = tous)
      * @return array|null null = aucune restriction propre au profil
      */
-    public static function mergePolicy(?array $old, array $checked, array $kept, array $banned, array $all, callable $globally_enabled): ?array
+    public static function mergePolicy(?array $old, array $checked, array $kept, array $banned, array $all, callable $globally_enabled, ?array $shown = null): ?array
     {
         $prev_allowed = fn(string $t) => $old === null || $old['tools_mode'] === 'all' || in_array($t, $old['tools'], true);
+        $editable = array_diff($shown ?? $all, $banned);
         $allowed = array_values(array_unique(array_merge(
-            array_intersect($checked, $all),
-            array_filter($banned, fn($t) => in_array($t, $all, true) && $prev_allowed($t))
+            array_intersect($checked, $editable, $all),
+            array_filter(array_diff($all, $editable), fn($t) => $prev_allowed($t))
         )));
         $choosable = array_diff($all, self::ALWAYS_ON);
         // Tout autorisé = aucune restriction d'outil (les outils des versions futures restent alors disponibles)

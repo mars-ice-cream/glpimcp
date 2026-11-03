@@ -136,6 +136,13 @@ check('type désactivé partout : retrait du profil conservé', $new['denied_cat
 $new = Permissions::mergePolicy(['denied_categories' => []] + $old, $all, $kept, [], $all, $gl);
 check('type désactivé partout : pas de retrait inventé', $new['denied_categories'] ?? [], ['tickets']);
 
+// Outils non affichés (droits GLPI du profil insuffisants) : état conservé, et pas de restriction inventée
+$new = Permissions::mergePolicy(null, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
+check('outils masqués : aucune restriction inventée', $new, null);
+$old = ['tools_mode' => 'list', 'tools' => ['glpi_search'], 'denied_categories' => []];
+$new = Permissions::mergePolicy($old, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
+check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_search']);
+
 echo "Accès OAuth et politique actuelle du client\n";
 $managed = ['is_active' => 1, 'managed' => 1, 'skip_consent' => 1, 'forced_profiles_id' => 1, 'token_days' => 30];
 $implicit = ['grant_mode' => 'implicit', 'profiles_id' => 1, 'date_creation' => date('Y-m-d H:i:s')];
