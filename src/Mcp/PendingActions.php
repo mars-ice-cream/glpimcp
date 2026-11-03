@@ -316,21 +316,35 @@ final class PendingActions
             'annulation_forcée' => !empty($meta['force']) ? true : null,
         ], fn($v) => $v !== null);
 
-        $reserved = 0;
+        $reservation = null;
         try {
             // Réglages revérifiés à l'exécution (ils ont pu changer entre l'aperçu et la confirmation)
             Permissions::assertOps($ops, $rollback_of > 0);
             if ($rollback_of === 0) {
-                $reserved = RateLimiter::reserveTickets($ctx, $ops);
+                $reservation = RateLimiter::reserveTickets($ctx, $ops);
             }
-            $results = Operations::execute($ops, $journal, $before_commit);
+            // Dans la transaction, avant validation : tickets réellement créés au-delà de la réservation
+            // réservés à leur tour, ou refus (tout le lot est alors annulé)
+            $commit_hook = function (array $results) use ($ctx, $ops, &$reservation, $before_commit): void {
+                if ($reservation !== null) {
+                    RateLimiter::extendTickets($ctx, $reservation, RateLimiter::actualTickets($ops, $results) - $reservation['n']);
+                }
+                if ($before_commit !== null) {
+                    $before_commit($results);
+                }
+            };
+            $results = Operations::execute($ops, $journal, $commit_hook);
         } catch (ToolException $e) {
-            RateLimiter::settleTickets($ctx, $reserved, 0);
+            if ($reservation !== null) {
+                RateLimiter::settleTickets($reservation, 0);
+            }
             AuditLog::write($ctx, $tool, 'échec', $summary, $trace + ['erreur' => $e->getMessage(), 'détails' => $e->getDetails(), 'operations' => $ops], null, $rollback_of);
             throw $e;
         }
 
-        RateLimiter::settleTickets($ctx, $reserved, RateLimiter::actualTickets($ops, $results));
+        if ($reservation !== null) {
+            RateLimiter::settleTickets($reservation, RateLimiter::actualTickets($ops, $results));
+        }
         $undoability = Operations::undoability($journal);
         $log_id = AuditLog::write($ctx, $tool, 'exécuté', $summary, $trace + [
             'operations' => $ops, 'résultats' => $results, 'annulabilité' => $undoability,

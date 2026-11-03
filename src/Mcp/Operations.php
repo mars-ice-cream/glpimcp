@@ -434,7 +434,7 @@ final class Operations
             }
             if ($before_commit !== null) {
                 // Ex. marquage « confirmation utilisée » : validé avec les écritures, ou annulé avec elles
-                $before_commit();
+                $before_commit($results);
             }
             $DB->commit();
             $journal['undo'] = array_reverse($journal['undo']);

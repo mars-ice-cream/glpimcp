@@ -113,6 +113,8 @@ if (isset($_POST['client_policy'])) {
 if (isset($_POST['token_reactivate'])) {
     global $DB;
     $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 1, 'suspended_reason' => null, 'date_suspended' => null], ['id' => (int) $_POST['id'], 'NOT' => ['date_suspended' => null]]);
+    // Compteurs de refus et de débit remis à zéro : un nouvel abus doit pouvoir suspendre à nouveau
+    $DB->delete('glpi_plugin_glpimcp_counters', ['k' => ['rej:t' . (int) $_POST['id'], 'req:t' . (int) $_POST['id']]]);
     AuditLog::write(new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']), 'garde-fou', 'exécuté', 'Jeton #' . (int) $_POST['id'] . ' réactivé par un administrateur');
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();

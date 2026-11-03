@@ -31,10 +31,10 @@ final class RateLimiter
      * atomique (UPDATE … LAST_INSERT_ID(expr) : la valeur lue est celle écrite par cette requête, même
      * en cas d'appels simultanés). $by peut être négatif (libération d'une réservation).
      */
-    public static function hit(string $key, int $window, int $by = 1): int
+    public static function hit(string $key, int $window, int $by = 1, ?int $win = null): int
     {
         global $DB;
-        $win = intdiv(time(), $window);
+        $win ??= intdiv(time(), $window);
         $k = $DB->escape(mb_substr($key, 0, 100));
         $exp = ($win + 1) * $window;
         $table = self::TABLE;
@@ -146,30 +146,44 @@ final class RateLimiter
 
     /**
      * Réserve atomiquement, avant l'exécution, les tickets que le lot peut créer. Deux exécutions
-     * simultanées ne peuvent pas passer toutes les deux au-delà du quota. Renvoie le nombre réservé.
+     * simultanées ne peuvent pas passer toutes les deux au-delà du quota. La réservation garde sa
+     * fenêtre horaire : ajustements et libération s'appliquent à ce même compteur, même après l'heure.
+     *
+     * @return array{n: int, win: int, key: string, limit: int}
      * @throws ToolException
      */
-    public static function reserveTickets(Context $ctx, array $ops): int
+    public static function reserveTickets(Context $ctx, array $ops): array
     {
-        $n = self::estimateTickets($ops);
-        if ($n <= 0) {
-            return 0;
-        }
-        $limit = self::limits($ctx->token)['tickets_per_hour'];
-        $after = self::hit('tk:u' . $ctx->users_id, 3600, $n);
-        if ($limit > 0 && $after > $limit) {
-            self::hit('tk:u' . $ctx->users_id, 3600, -$n);
-            self::rejected($ctx->token, "plus de {$limit} tickets par heure");
-            throw self::ticketQuota($limit);
-        }
-        return $n;
+        $res = ['n' => 0, 'win' => intdiv(time(), 3600), 'key' => 'tk:u' . $ctx->users_id, 'limit' => self::limits($ctx->token)['tickets_per_hour']];
+        self::extendTickets($ctx, $res, self::estimateTickets($ops));
+        return $res;
     }
 
-    /** Ajuste la réservation au nombre réellement créé (0 en cas d'échec : réservation libérée). */
-    public static function settleTickets(Context $ctx, int $reserved, int $actual): void
+    /**
+     * Ajoute $n tickets à une réservation, atomiquement, ou refuse si le quota serait dépassé.
+     * Appelé aussi DANS la transaction, avant validation, avec le nombre réellement créé : un lot qui crée
+     * plus que prévu (destinations ajoutées dans le même lot…) est annulé au lieu de dépasser le quota.
+     * @throws ToolException
+     */
+    public static function extendTickets(Context $ctx, array &$res, int $n): void
     {
-        if ($actual !== $reserved) {
-            self::hit('tk:u' . $ctx->users_id, 3600, $actual - $reserved);
+        if ($n <= 0) {
+            return;
+        }
+        $after = self::hit($res['key'], 3600, $n, $res['win']);
+        if ($res['limit'] > 0 && $after > $res['limit']) {
+            self::hit($res['key'], 3600, -$n, $res['win']);
+            self::rejected($ctx->token, "plus de {$res['limit']} tickets par heure");
+            throw self::ticketQuota($res['limit']);
+        }
+        $res['n'] += $n;
+    }
+
+    /** Ramène la réservation au nombre réellement créé (0 en cas d'échec), dans sa fenêtre d'origine. */
+    public static function settleTickets(array $res, int $actual): void
+    {
+        if ($actual < $res['n']) {
+            self::hit($res['key'], 3600, $actual - $res['n'], $res['win']);
         }
     }
 
@@ -242,7 +256,7 @@ final class RateLimiter
         if ($threshold <= 0 || empty($token['id'])) {
             return;
         }
-        if (self::hit('rej:t' . (int) $token['id'], 600) === $threshold) {
+        if (self::hit('rej:t' . (int) $token['id'], 600) >= $threshold) {
             self::suspend($token, "Suspension automatique : {$threshold} refus en 10 minutes ({$what})");
         }
     }

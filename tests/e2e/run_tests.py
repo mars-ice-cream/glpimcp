@@ -561,6 +561,16 @@ def garde_fou_debit_429_puis_suspension():
         assert row == ["0", "1"], row
         assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE tokens_id={tid} AND status='suspendu'") >= 1
         assert db_count("SELECT COUNT(*) FROM glpi_queuednotifications WHERE name LIKE '[GLPI MCP] Jeton suspendu%'") >= 1, "alerte non mise en file"
+        # Réactivation par un administrateur (interface GLPI, CSRF) : un nouvel abus doit re-suspendre
+        s = glpi_session()
+        page = s.get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
+        csrf = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)[-1]
+        s.post(BASE + "/plugins/glpimcp/front/config.form.php", data={"_glpi_csrf_token": csrf, "id": tid, "token_reactivate": "1"}, timeout=30)
+        assert db(f"SELECT is_active FROM glpi_plugin_glpimcp_tokens WHERE id={tid}")[0][0] == "1", "réactivation sans effet"
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_counters WHERE k='rej:t{tid}'") == 0, "compteur de refus non remis à zéro"
+        for _ in range(8):
+            rpc(TOK["limited"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        assert db(f"SELECT is_active FROM glpi_plugin_glpimcp_tokens WHERE id={tid}")[0][0] == "0", "nouvel abus non suspendu après réactivation"
     finally:
         set_plugin_config("rl_suspend_after", old)
         db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_requests_per_minute=NULL, is_active=1, date_suspended=NULL, suspended_reason=NULL WHERE id={tid}")
