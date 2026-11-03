@@ -25,6 +25,12 @@ if (isset($_POST['update'])) {
         'oauth_enabled'       => (int) !empty($_POST['oauth_enabled']),
         'oauth_dcr_enabled'   => (int) !empty($_POST['oauth_dcr_enabled']),
         'oauth_access_ttl'    => max(300, min(86400, (int) ($_POST['oauth_access_ttl'] ?? 3600))),
+        'rl_requests_per_minute' => max(0, min(100000, (int) ($_POST['rl_requests_per_minute'] ?? 600))),
+        'rl_writes_per_hour'     => max(0, min(100000, (int) ($_POST['rl_writes_per_hour'] ?? 200))),
+        'rl_tickets_per_hour'    => max(0, min(100000, (int) ($_POST['rl_tickets_per_hour'] ?? 20))),
+        'rl_suspend_after'       => max(0, min(100000, (int) ($_POST['rl_suspend_after'] ?? 50))),
+        'alert_emails'           => implode(', ', array_filter(array_map('trim', preg_split('/[\s,;]+/', (string) ($_POST['alert_emails'] ?? '')) ?: []), fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL))),
+        'trusted_proxies'        => implode(', ', \GlpiPlugin\Glpimcp\OAuth\ClientPolicy::cidrs((string) ($_POST['trusted_proxies'] ?? ''))),
         'oauth_trusted_resources' => json_encode(array_values(array_filter(array_map(
             fn($u) => rtrim(trim($u), '/'),
             preg_split('/\R/', (string) ($_POST['oauth_trusted_resources'] ?? ''))
@@ -63,6 +69,51 @@ if (isset($_POST['update_permissions'])) {
             ['avant' => $before, 'après' => array_map(fn($v) => (bool) $v, array_combine(array_keys(Permissions::CATEGORIES), array_values($values)))]
         );
     }
+    Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
+    Html::back();
+}
+if (isset($_POST['client_policy'])) {
+    global $DB;
+    $cid = (int) $_POST['id'];
+    $before = $DB->request(['FROM' => 'glpi_plugin_glpimcp_oauthclients', 'WHERE' => ['id' => $cid], 'LIMIT' => 1])->current();
+    $nullable = fn($k) => isset($_POST[$k]) && $_POST[$k] !== '' ? max(0, (int) $_POST[$k]) : 'NULL';
+    $managed = (int) !empty($_POST['managed']);
+    $profile = (int) ($_POST['forced_profiles_id'] ?? 0);
+    if ($managed && $profile <= 0) {
+        Session::addMessageAfterRedirect(__('A managed client needs an imposed profile.', 'glpimcp'), false, ERROR);
+        Html::back();
+    }
+    $values = [
+        'managed'            => $managed,
+        'forced_profiles_id' => $profile,
+        'skip_consent'       => $managed ? (int) !empty($_POST['skip_consent']) : 0,
+        'token_days'         => max(0, min(365, (int) ($_POST['token_days'] ?? 0))),
+        'allowed_ips'        => implode(', ', \GlpiPlugin\Glpimcp\OAuth\ClientPolicy::cidrs((string) ($_POST['allowed_ips'] ?? ''))),
+        'rl_requests_per_minute'    => $nullable('rl_requests_per_minute'),
+        'rl_writes_per_hour'        => $nullable('rl_writes_per_hour'),
+        'rl_tickets_per_hour'       => $nullable('rl_tickets_per_hour'),
+        'rl_client_writes_per_hour' => $nullable('rl_client_writes_per_hour'),
+        'date_mod'           => date('Y-m-d H:i:s'),
+    ];
+    $DB->update('glpi_plugin_glpimcp_oauthclients', $values, ['id' => $cid]);
+    if ($before && ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed)) {
+        // Profil imposé changé : les accès accordés avec un autre profil sont coupés (reconnexion = nouveau profil)
+        $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['oauthclients_id' => $cid, 'NOT' => ['profiles_id' => $profile]]);
+        // … et les codes d'autorisation pas encore échangés sont invalidés
+        $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
+    }
+    AuditLog::write(
+        new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),
+        'client_policy', 'exécuté', 'Politique du client IA « ' . ($before['name'] ?? '#' . $cid) . ' » modifiée',
+        ['avant' => array_intersect_key((array) $before, $values), 'après' => $values]
+    );
+    Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
+    Html::back();
+}
+if (isset($_POST['token_reactivate'])) {
+    global $DB;
+    $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 1, 'suspended_reason' => null, 'date_suspended' => null], ['id' => (int) $_POST['id'], 'NOT' => ['date_suspended' => null]]);
+    AuditLog::write(new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']), 'garde-fou', 'exécuté', 'Jeton #' . (int) $_POST['id'] . ' réactivé par un administrateur');
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();
 }
@@ -129,6 +180,20 @@ echo '<div class="col-md-12"><label class="form-label">' . __('Trusted relay ser
 echo '<textarea name="oauth_trusted_resources" rows="2" class="form-control" placeholder="https://dokore.example.fr/mcp">' . htmlescape(implode("\n", \GlpiPlugin\Glpimcp\OAuth\OAuthServer::trustedResources())) . '</textarea>';
 echo '<small class="text-muted">' . __('An AI client connected to such a relay can obtain a token here; the relay forwards it and GLPI rights still apply. Leave empty if you do not use one.', 'glpimcp') . '</small></div>';
 echo '</div>';
+echo '<h4 class="mt-4">' . __('Abuse protection (all tokens)', 'glpimcp') . '</h4>';
+echo '<p class="text-muted">' . __('Limits per token or per account, 0 = unlimited. Beyond the threshold of refusals within 10 minutes, the token is suspended and the administrators are alerted by e-mail.', 'glpimcp') . '</p><div class="row g-3">';
+foreach ([
+    'rl_requests_per_minute' => [__('Requests per minute per token', 'glpimcp'), 600],
+    'rl_writes_per_hour'     => [__('Changes per hour per account', 'glpimcp'), 200],
+    'rl_tickets_per_hour'    => [__('Tickets created per hour per account', 'glpimcp'), 20],
+    'rl_suspend_after'       => [__('Suspend a token after N refusals in 10 min', 'glpimcp'), 50],
+] as $k => [$label, $def]) {
+    echo '<div class="col-md-3"><label class="form-label">' . $label . '</label><input type="number" min="0" name="' . $k . '" class="form-control" value="' . (int) ($cfg[$k] ?? $def) . '"></div>';
+}
+echo '<div class="col-md-6"><label class="form-label">' . __('Alert e-mails (suspended token, client quota reached)', 'glpimcp') . '</label><input type="text" name="alert_emails" class="form-control" placeholder="rssi@exemple.fr, support@exemple.fr" value="' . htmlescape((string) ($cfg['alert_emails'] ?? '')) . '"></div>';
+echo '<div class="col-md-6"><label class="form-label">' . __('Trusted reverse proxies (IP or CIDR)', 'glpimcp') . '</label><input type="text" name="trusted_proxies" class="form-control" placeholder="10.0.0.1, 100.64.0.0/10" value="' . htmlescape((string) ($cfg['trusted_proxies'] ?? '')) . '">'
+    . '<small class="text-muted">' . __('Only behind these proxies is X-Forwarded-For used to know the client IP (IP restrictions of AI clients).', 'glpimcp') . '</small></div>';
+echo '</div>';
 if (!str_starts_with((string) ($CFG_GLPI['url_base'] ?? ''), 'https://')) {
     echo '<div class="alert alert-warning mt-3 mb-0">' . __('The application URL is not in HTTPS: claude.ai and ChatGPT will refuse to connect. Set a public HTTPS URL in Setup > General.', 'glpimcp') . '</div>';
 }
@@ -161,12 +226,43 @@ foreach ($clients as $c) {
     echo '<td>' . htmlescape(implode(', ', $hosts)) . '</td><td>' . Html::convDateTime($c['date_creation']) . '</td>';
     echo '<td>' . ($c['last_use'] ? Html::convDateTime($c['last_use']) : '—') . '</td><td>' . (int) $nb . '</td><td>';
     echo '<form method="post" action="" class="d-inline">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $c['id']]) . Html::hidden('is_active', ['value' => $c['is_active'] ? 0 : 1]);
-    echo '<button type="submit" name="client_toggle" class="btn btn-sm ' . ($c['is_active'] ? 'btn-outline-danger">' . __('Disable and cut access', 'glpimcp') : 'btn-outline-success">' . __('Enable', 'glpimcp')) . '</button></form></td></tr>';
+    echo '<button type="submit" name="client_toggle" class="btn btn-sm ' . ($c['is_active'] ? 'btn-outline-danger">' . __('Disable and cut access', 'glpimcp') : 'btn-outline-success">' . __('Enable', 'glpimcp')) . '</button></form>';
+    echo ' <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#glpimcp_policy_' . (int) $c['id'] . '">' . __('Company policy', 'glpimcp') . '</button></td></tr>';
+    // Politique « client géré par l'entreprise »
+    echo '<tr class="collapse' . ($c['managed'] ? ' show' : '') . '" id="glpimcp_policy_' . (int) $c['id'] . '"><td colspan="6" class="bg-light">';
+    echo '<form method="post" action="" class="row g-2 align-items-end p-2">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $c['id']]);
+    echo '<div class="col-md-3"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="managed" value="1" id="m' . (int) $c['id'] . '"' . ($c['managed'] ? ' checked' : '') . '><label class="form-check-label" for="m' . (int) $c['id'] . '"><strong>' . __('Managed by the company', 'glpimcp') . '</strong></label></div>';
+    echo '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_consent" value="1" id="s' . (int) $c['id'] . '"' . ($c['skip_consent'] ? ' checked' : '') . '><label class="form-check-label" for="s' . (int) $c['id'] . '">' . __('No consent page (access granted after GLPI / SSO login)', 'glpimcp') . '</label></div></div>';
+    echo '<div class="col-md-2"><label class="form-label">' . __('Imposed profile', 'glpimcp') . '</label><select name="forced_profiles_id" class="form-select form-select-sm"><option value="0">—</option>';
+    foreach ($DB->request(['SELECT' => ['id', 'name'], 'FROM' => 'glpi_profiles', 'ORDER' => 'name']) as $p) {
+        echo '<option value="' . (int) $p['id'] . '"' . ((int) $c['forced_profiles_id'] === (int) $p['id'] ? ' selected' : '') . '>' . htmlescape($p['name']) . '</option>';
+    }
+    echo '</select></div>';
+    echo '<div class="col-md-1"><label class="form-label">' . __('Days', 'glpimcp') . '</label><input type="number" min="0" max="365" name="token_days" class="form-control form-control-sm" value="' . (int) $c['token_days'] . '"></div>';
+    echo '<div class="col-md-2"><label class="form-label">' . __('Allowed IPs (CIDR)', 'glpimcp') . '</label><input type="text" name="allowed_ips" class="form-control form-control-sm" value="' . htmlescape((string) $c['allowed_ips']) . '"></div>';
+    foreach (['rl_requests_per_minute' => __('Req./min', 'glpimcp'), 'rl_writes_per_hour' => __('Changes/h per account', 'glpimcp'), 'rl_tickets_per_hour' => __('Tickets/h per account', 'glpimcp'), 'rl_client_writes_per_hour' => __('Changes/h whole client', 'glpimcp')] as $k => $label) {
+        echo '<div class="col-md-1"><label class="form-label small">' . $label . '</label><input type="number" min="0" name="' . $k . '" class="form-control form-control-sm" placeholder="' . __('default', 'glpimcp') . '" value="' . ($c[$k] === null ? '' : (int) $c[$k]) . '"></div>';
+    }
+    echo '<div class="col-md-1"><button type="submit" name="client_policy" class="btn btn-sm btn-primary">' . _sx('button', 'Save') . '</button></div>';
+    echo '</form><small class="text-muted px-2">' . __('Managed: only accounts having the imposed profile can connect, always with that profile. Never more rights than the account has.', 'glpimcp') . '</small></td></tr>';
 }
 if (count($clients) === 0) {
     echo '<tr><td colspan="6" class="text-muted p-3">' . __('No AI client connected through OAuth yet.', 'glpimcp') . '</td></tr>';
 }
 echo '</tbody></table></div></div>';
+
+// --- Jetons suspendus par les garde-fous -------------------------------------
+$suspended = $DB->request(['FROM' => 'glpi_plugin_glpimcp_tokens', 'WHERE' => ['is_active' => 0, 'NOT' => ['date_suspended' => null]], 'ORDER' => 'date_suspended DESC', 'LIMIT' => 50]);
+if (count($suspended) > 0) {
+    echo '<div class="card mb-3 border-danger"><div class="card-header"><h3 class="card-title text-danger"><i class="ti ti-alert-triangle me-2"></i>' . __('Tokens suspended by abuse protection', 'glpimcp') . '</h3></div><div class="card-body p-0">';
+    echo '<table class="table table-sm mb-0"><tbody>';
+    foreach ($suspended as $s) {
+        echo '<tr><td>' . htmlescape(getUserName($s['users_id'])) . '</td><td>' . htmlescape($s['name']) . '</td><td>' . Html::convDateTime($s['date_suspended']) . '</td><td>' . htmlescape((string) $s['suspended_reason']) . '</td><td>';
+        echo '<form method="post" action="" class="d-inline">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $s['id']]);
+        echo '<button type="submit" name="token_reactivate" class="btn btn-sm btn-outline-warning">' . __('Reactivate', 'glpimcp') . '</button></form></td></tr>';
+    }
+    echo '</tbody></table></div></div>';
+}
 
 // --- Jetons actifs ------------------------------------------------------------
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __('Active tokens', 'glpimcp') . '</h3></div><div class="card-body p-0">';

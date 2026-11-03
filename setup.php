@@ -13,7 +13,7 @@ use Glpi\Http\SessionManager;
 use Glpi\Plugin\Hooks;
 use GlpiPlugin\Glpimcp\Token;
 
-define('PLUGIN_GLPIMCP_VERSION', '1.4.0');
+define('PLUGIN_GLPIMCP_VERSION', '1.5.0');
 define('PLUGIN_GLPIMCP_MIN_GLPI', '11.0.0');
 define('PLUGIN_GLPIMCP_MAX_GLPI', '11.99.99');
 

@@ -12,6 +12,7 @@ use Glpi\Http\Firewall;
 use Glpi\Http\HeaderlessStreamedResponse;
 use Glpi\Security\Attribute\SecurityStrategy;
 use GlpiPlugin\Glpimcp\OAuth\OAuthException;
+use GlpiPlugin\Glpimcp\OAuth\ClientPolicy;
 use GlpiPlugin\Glpimcp\OAuth\OAuthServer;
 use Html;
 use Profile_User;
@@ -132,6 +133,29 @@ final class OAuthController extends AbstractController
 
         $users_id = (int) Session::getLoginUserID();
 
+        // Client IA géré par l'entreprise : profil imposé, consentement implicite possible (SSO → accès direct)
+        $client = $req['client'];
+        if (ClientPolicy::isManaged($client)) {
+            $forced = ClientPolicy::forcedProfileFor($client, $users_id);
+            if ($forced === null) {
+                return $this->page(fn() => print('<div class="alert alert-warning">' . sprintf(
+                    htmlescape(__('This assistant is reserved by your administrator to accounts with the profile "%s". Your account does not have it.', 'glpimcp')),
+                    htmlescape(\Dropdown::getDropdownName('glpi_profiles', (int) $client['forced_profiles_id']))
+                ) . '</div>'), 403);
+            }
+            $days = (int) ($client['token_days'] ?? 0) > 0 ? (int) $client['token_days'] : 90;
+            if (!empty($client['skip_consent']) || ($request->isMethod('POST') && ($q['decision'] ?? '') === 'allow')) {
+                OAuthServer::purgeExpiredCodes();
+                $code = OAuthServer::issueCode($req, $users_id, $forced, $days);
+                return new RedirectResponse(OAuthServer::redirectWith($req['redirect_uri'], [
+                    'code'  => $code,
+                    'state' => $req['state'],
+                    'iss'   => OAuthServer::base(),
+                ]));
+            }
+            $q['profiles_id'] = $forced;
+        }
+
         if ($request->isMethod('POST')) {
             if (($q['decision'] ?? '') !== 'allow') {
                 return new RedirectResponse(OAuthServer::redirectWith($req['redirect_uri'], ['error' => 'access_denied', 'error_description' => "L'utilisateur a refusé l'accès.", 'state' => $req['state']]));
@@ -145,7 +169,6 @@ final class OAuthController extends AbstractController
             ]));
         }
 
-        $client = $req['client'];
         $host = parse_url($req['redirect_uri'], PHP_URL_HOST);
 
         return $this->page(function () use ($q, $client, $host, $users_id) {
@@ -169,9 +192,12 @@ final class OAuthController extends AbstractController
             }
             echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
             echo '<div class="row g-2 mb-3"><div class="col-sm-7"><label class="form-label">' . __('Profile used by the assistant', 'glpimcp') . '</label>';
-            echo '<select name="profiles_id" class="form-select">';
-            $active = (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);
+            echo '<select name="profiles_id" class="form-select"' . (ClientPolicy::isManaged($client) ? ' disabled' : '') . '>';
+            $active = ClientPolicy::isManaged($client) ? (int) $client['forced_profiles_id'] : (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);
             foreach (Profile_User::getUserProfiles($users_id) as $pid) {
+                if (ClientPolicy::isManaged($client) && (int) $pid !== $active) {
+                    continue;
+                }
                 echo '<option value="' . (int) $pid . '"' . ((int) $pid === $active ? ' selected' : '') . '>' . htmlescape(Dropdown::getDropdownName('glpi_profiles', $pid)) . '</option>';
             }
             echo '</select></div><div class="col-sm-5"><label class="form-label">' . __('Validity', 'glpimcp') . '</label><select name="days" class="form-select">';

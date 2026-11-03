@@ -93,9 +93,11 @@ class FixturesCommand extends AbstractCommand
             'TOKEN_SELFSERVICE'  => Token::generate($post, 'E2E self-service', $p_self),
             'TOKEN_DUAL_TECH'    => Token::generate($dual, 'E2E dual technicien', $p_tech),
             'TOKEN_DUAL_ADMIN_E1' => Token::generate($dual, 'E2E dual admin E1', $p_admin, $e1, 0, false),
+            // Jeton dédié aux tests de garde-fous (limites basses posées par les tests eux-mêmes)
+            'TOKEN_LIMITED'      => Token::generate($tech, 'E2E limité', $p_tech),
         ];
         $output->writeln(json_encode($tokens + [
-            'E1' => $e1, 'E2' => $e2, 'DUAL_ID' => $dual, 'P_TECH' => $p_tech, 'P_ADMIN' => $p_admin,
+            'E1' => $e1, 'E2' => $e2, 'DUAL_ID' => $dual, 'P_TECH' => $p_tech, 'P_ADMIN' => $p_admin, 'P_SELF' => $p_self,
         ], JSON_PRETTY_PRINT));
         return 0;
     }

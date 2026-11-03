@@ -178,7 +178,7 @@ Prérequis : GLPI 11.0 → 11.9, PHP ≥ 8.2.
 
 ```bash
 cd /var/www/glpi/plugins            # ou marketplace/
-unzip glpimcp-1.4.0.zip             # crée le dossier glpimcp/
+unzip glpimcp-1.5.0.zip             # crée le dossier glpimcp/
 chown -R www-data:www-data glpimcp
 php /var/www/glpi/bin/console plugin:install glpimcp --username=glpi
 php /var/www/glpi/bin/console plugin:activate glpimcp
@@ -307,6 +307,56 @@ claude mcp add --transport http glpi https://votre-glpi/plugins/glpimcp/mcp \
 
 ---
 
+## Déployer en entreprise
+
+Trois façons de connecter des assistants, selon qui utilise le plugin. Aucune ne donne plus de droits que
+le compte GLPI ; toutes passent par les mêmes garde-fous (aperçu, approbation, quotas).
+
+| Cas | Qui | Comment | Ce que voit l'utilisateur |
+|---|---|---|---|
+| **Individuel** | techniciens, administrateurs, scripts | jeton personnel, ou OAuth avec choix du profil | il génère son jeton ou clique *Autoriser* en choisissant son profil |
+| **Assistant de l'entreprise** (Copilot, Claude Team/Enterprise, ChatGPT Enterprise…) | tous les salariés | OAuth + client IA **géré** par l'administrateur, SSO de GLPI | la 1re fois, *Se connecter* ; avec le SSO AD, aucun mot de passe ni page de consentement |
+| **Relais** (Dokore…) | outils qui ajoutent leurs propres fonctions | OAuth via un serveur relais autorisé | comme l'assistant qui passe par le relais |
+
+### Assistant de l'entreprise : exemple avec Microsoft Copilot (Copilot Studio)
+
+1. **GLPI** : URL publique en HTTPS (*Configuration > Générale*), SSO actif (SAML, CAS ou OIDC vers l'AD /
+   Entra ID), OAuth et enregistrement automatique des clients activés dans *GLPI MCP*.
+2. **Copilot Studio** : dans l'agent, *Outils > Ajouter un outil > Model Context Protocol*, URL
+   `https://votre-glpi/plugins/glpimcp/mcp`, authentification **OAuth 2.0 – découverte dynamique**. Copilot
+   s'enregistre tout seul auprès de GLPI ; faites une première connexion avec votre compte pour tester.
+3. **GLPI > Configuration > Plugins > GLPI MCP > Clients IA** : sur le client « Copilot » qui vient
+   d'apparaître, *Politique d'entreprise* :
+   - **Géré par l'entreprise**, **profil imposé** : `Self-Service` (ou un profil dédié) ;
+   - **Sans page de consentement** : après la connexion SSO, l'accès est accordé directement ;
+   - durée des accès, **IP autorisées** (plages de sortie de Microsoft si vous voulez restreindre ;
+     derrière un reverse proxy, déclarez-le dans *Reverse proxies de confiance*) ;
+   - quotas propres au client (par compte, et pour l'ensemble du client).
+4. **Publiez l'agent** dans Teams / Microsoft 365 Copilot. Chaque salarié, à sa première question qui
+   touche GLPI, clique *Se connecter* : le SSO l'identifie, il obtient un accès **à son nom**, limité au
+   profil imposé (ses tickets, le catalogue de services, la base de connaissances). Un compte qui n'a pas
+   ce profil est refusé.
+
+Pourquoi pas une clé unique partagée ? Une clé partagée ne sait pas qui parle : pour « mes tickets », il
+faudrait croire l'identité envoyée avec la clé, et une clé volée donnerait accès aux tickets de tout le
+monde. Avec OAuth + SSO, chaque accès est nominatif, révocable individuellement, et il n'y a aucune clé à
+distribuer.
+
+### Garde-fous contre l'abus d'une clé (tous les jetons)
+
+| Garde-fou | Défaut | Effet |
+|---|---|---|
+| Requêtes par minute et par jeton | 600 | HTTP 429 + `Retry-After` |
+| Écritures par heure et par compte (aperçus compris) | 200 | écriture refusée, message clair |
+| Tickets créés par heure et par compte (directs ou via formulaire) | 20 | création refusée |
+| Écritures par heure pour tout un client IA géré | illimité (réglable par client) | refus + alerte à l'administrateur |
+| Refus répétés (N en 10 minutes) | 50 | **jeton suspendu** + e-mail d'alerte + entrée au journal ; réactivation par un administrateur |
+| IP autorisées par client IA | aucune restriction | 403 hors des plages déclarées |
+
+Limites effectives : celles du jeton (si définies) > celles du client IA > réglages globaux ; 0 = illimité.
+Les e-mails d'alerte partent vers *E-mails d'alerte* (à défaut, l'adresse administrateur de GLPI) via la
+file de notifications de GLPI. Un jeton volé reste donc borné : quelques tickets, puis suspension.
+
 ## Tests
 
 - **Unitaires** (sans GLPI) : `php tests/unit/run.php`.
@@ -320,13 +370,14 @@ claude mcp add --transport http glpi https://votre-glpi/plugins/glpimcp/mcp \
 
   `ci_setup.sh` crée deux entités, un compte à deux profils (Technicien sur E1, Admin plus privilégié)
   et des jetons au périmètre connu (commande de test `tests/e2e/FixturesCommand.php`, copiée seulement
-  dans l'instance de test). 25 scénarios, avec vérifications en base (`DB_CLI`) en plus des réponses MCP :
+  dans l'instance de test). 29 scénarios, avec vérifications en base (`DB_CLI`) en plus des réponses MCP :
   authentification, filtrage des outils, droits GLPI, anti-escalade, usage unique, **confirmations
   simultanées (un seul effet)**, **confirmation et annulation simultanées**, **aperçu obsolète refusé sans
   effet**, **transaction en cas d'échec en cours d'exécution**, **approbation humaine obligatoire** (sans
   CSRF, par un autre compte, cible modifiée après approbation), **profil fixé au jeton**, **isolation
   entre entités**, **droits retirés entre aperçu et exécution**, **conflit apparu pendant l'aperçu d'une
-  annulation**, annulation forcée, interrupteurs, formulaires, langue, logiciels, projets, SecIncident
+  annulation**, **débit (429) et suspension automatique**, **quota de tickets**, **client géré (profil imposé,
+  sans consentement, IP)**, annulation forcée, interrupteurs, formulaires, langue, logiciels, projets, SecIncident
   (si actif), primitives, OAuth. Tout ce qui est créé est préfixé `TEST-MCP` puis annulé via le journal.
 - **Intégration continue** (`.github/workflows/tests.yml`) : syntaxe PHP 8.2 → 8.4, tests unitaires,
   traductions, XML du catalogue, puis le job *Bout en bout* (GLPI 11.0.12 + MariaDB 11.4 jetables).
