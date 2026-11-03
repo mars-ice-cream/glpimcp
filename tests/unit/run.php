@@ -84,5 +84,23 @@ check('aucune', Operations::undoability(['undo' => [], 'irréversible' => ['Supp
 check('effets externes', count(Operations::undoability(['undo' => [1], 'irréversible' => ['Notifications e-mail éventuellement générées pour X', 'Champ spécial']])['effets_externes']), 1);
 check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NON'), true);
 
+echo "Adresses IP des clients IA\n";
+use GlpiPlugin\Glpimcp\OAuth\ClientPolicy as CP;
+check('IPv4 dans le /24', CP::inCidr('203.0.113.42', '203.0.113.0/24'), true);
+check('IPv4 hors du /24', CP::inCidr('203.0.114.1', '203.0.113.0/24'), false);
+check('masque /20', CP::inCidr('10.0.15.255', '10.0.0.0/20') && !CP::inCidr('10.0.16.0', '10.0.0.0/20'), true);
+check('IP seule', CP::inCidr('192.0.2.7', '192.0.2.7'), true);
+check('IPv6', CP::inCidr('2001:db8::1', '2001:db8::/32'), true);
+check('IPv4 contre IPv6', CP::inCidr('192.0.2.7', '2001:db8::/32'), false);
+check('liste nettoyée', CP::cidrs("10.0.0.0/8, n'importe quoi; 192.0.2.1/33 ::1"), ['10.0.0.0/8', '::1']);
+check('client sans liste : tout passe', CP::ipAllowed(['allowed_ips' => ''], '198.51.100.1'), true);
+check('client avec liste : refus', CP::ipAllowed(['allowed_ips' => '203.0.113.0/24'], '198.51.100.1'), false);
+
+echo "Comptage des tickets (quotas)\n";
+use GlpiPlugin\Glpimcp\Mcp\RateLimiter;
+check('ticket + suivi', RateLimiter::ticketsIn([['op' => 'add', 'itemtype' => 'Ticket'], ['op' => 'add', 'itemtype' => 'ITILFollowup']]), 1);
+check('formulaire', RateLimiter::ticketsIn([['op' => 'form_submit']]), 1);
+check('modification', RateLimiter::ticketsIn([['op' => 'update', 'itemtype' => 'Ticket']]), 0);
+
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);

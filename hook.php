@@ -176,6 +176,59 @@ function plugin_glpimcp_install(): bool
     // ou à son profil unique ; sinon désactivés (jamais d'élargissement silencieux).
     \GlpiPlugin\Glpimcp\Mcp\TokenScope::migrateLegacyTokens();
 
+    // 1.5.0 : clients IA gérés par l'entreprise (profil imposé, consentement implicite après SSO, IP)
+    $client_columns = [
+        'managed'            => "tinyint NOT NULL DEFAULT '0' AFTER `is_active`",
+        'forced_profiles_id' => "int {$sign} NOT NULL DEFAULT '0' AFTER `managed`",
+        'skip_consent'       => "tinyint NOT NULL DEFAULT '0' AFTER `forced_profiles_id`",
+        'token_days'         => "int NOT NULL DEFAULT '0' AFTER `skip_consent`",
+        'allowed_ips'        => 'text AFTER `token_days`',
+        'rl_requests_per_minute' => 'int DEFAULT NULL AFTER `allowed_ips`',
+        'rl_writes_per_hour'     => 'int DEFAULT NULL AFTER `rl_requests_per_minute`',
+        'rl_tickets_per_hour'    => 'int DEFAULT NULL AFTER `rl_writes_per_hour`',
+        'rl_client_writes_per_hour' => 'int DEFAULT NULL AFTER `rl_tickets_per_hour`',
+        'date_mod'           => 'timestamp NULL DEFAULT NULL AFTER `last_use`',
+    ];
+    foreach ($client_columns as $col => $def) {
+        if (!$DB->fieldExists('glpi_plugin_glpimcp_oauthclients', $col)) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_glpimcp_oauthclients` ADD `{$col}` {$def}");
+        }
+    }
+    // 1.5.0 : limites par jeton (surcharges) et suspension automatique
+    $token_limits = [
+        'rl_requests_per_minute' => 'int DEFAULT NULL',
+        'rl_writes_per_hour'     => 'int DEFAULT NULL',
+        'rl_tickets_per_hour'    => 'int DEFAULT NULL',
+        'suspended_reason'       => 'text',
+        'date_suspended'         => 'timestamp NULL DEFAULT NULL',
+    ];
+    foreach ($token_limits as $col => $def) {
+        if (!$DB->fieldExists('glpi_plugin_glpimcp_tokens', $col)) {
+            $DB->doQuery("ALTER TABLE `glpi_plugin_glpimcp_tokens` ADD `{$col}` {$def}");
+        }
+    }
+    // Compteurs à fenêtre fixe (limitation de débit), incrémentés atomiquement
+    if (!$DB->tableExists('glpi_plugin_glpimcp_counters')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_glpimcp_counters` (
+            `k` varchar(100) NOT NULL DEFAULT '',
+            `win` int {$sign} NOT NULL DEFAULT '0',
+            `n` int {$sign} NOT NULL DEFAULT '0',
+            `exp` int {$sign} NOT NULL DEFAULT '0',
+            PRIMARY KEY (`k`, `win`),
+            KEY `exp` (`exp`)
+        ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
+    }
+
+    $keep = static fn(string $k, mixed $default) => Config::getConfigurationValues('plugin:glpimcp', [$k])[$k] ?? $default;
+    Config::setConfigurationValues('plugin:glpimcp', [
+        'rl_requests_per_minute' => $keep('rl_requests_per_minute', 600),
+        'rl_writes_per_hour'     => $keep('rl_writes_per_hour', 200),
+        'rl_tickets_per_hour'    => $keep('rl_tickets_per_hour', 20),
+        'rl_suspend_after'       => $keep('rl_suspend_after', 50),
+        'alert_emails'           => $keep('alert_emails', ''),
+        'trusted_proxies'        => $keep('trusted_proxies', ''),
+    ]);
+
     Config::setConfigurationValues('plugin:glpimcp', [
         'approval_scope'       => Config::getConfigurationValues('plugin:glpimcp', ['approval_scope'])['approval_scope'] ?? 'critical',
         'confirm_mode'         => Config::getConfigurationValues('plugin:glpimcp', ['confirm_mode'])['confirm_mode'] ?? 'all',
@@ -206,7 +259,7 @@ function plugin_glpimcp_uninstall(): bool
 {
     global $DB;
 
-    foreach (['glpi_plugin_glpimcp_tokens', 'glpi_plugin_glpimcp_pendingactions', 'glpi_plugin_glpimcp_logs', 'glpi_plugin_glpimcp_oauthclients', 'glpi_plugin_glpimcp_oauthcodes'] as $table) {
+    foreach (['glpi_plugin_glpimcp_tokens', 'glpi_plugin_glpimcp_pendingactions', 'glpi_plugin_glpimcp_logs', 'glpi_plugin_glpimcp_oauthclients', 'glpi_plugin_glpimcp_oauthcodes', 'glpi_plugin_glpimcp_counters'] as $table) {
         if ($DB->tableExists($table)) {
             $DB->doQuery("DROP TABLE `$table`");
         }
@@ -214,7 +267,8 @@ function plugin_glpimcp_uninstall(): bool
 
     $config = new Config();
     $config->deleteConfigurationValues('plugin:glpimcp', array_merge(
-        ['approval_scope', 'confirm_mode', 'pending_ttl_minutes', 'max_search_results', 'oauth_enabled', 'oauth_dcr_enabled', 'oauth_access_ttl', 'oauth_trusted_resources'],
+        ['rl_requests_per_minute', 'rl_writes_per_hour', 'rl_tickets_per_hour', 'rl_suspend_after', 'alert_emails', 'trusted_proxies',
+         'approval_scope', 'confirm_mode', 'pending_ttl_minutes', 'max_search_results', 'oauth_enabled', 'oauth_dcr_enabled', 'oauth_access_ttl', 'oauth_trusted_resources'],
         array_keys(\GlpiPlugin\Glpimcp\Mcp\Permissions::defaults())
     ));
 

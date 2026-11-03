@@ -43,6 +43,10 @@ final class PendingActions
 
         $ops = Operations::canonicalize($ops);
         try {
+            if (empty($meta['rollback_of'])) {
+                // Quotas (écritures/heure, tickets/heure, client) : un flot d'aperçus est aussi un abus
+                RateLimiter::checkWrite($ctx, $ops, true);
+            }
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
         } catch (ToolException $e) {
@@ -154,6 +158,9 @@ final class PendingActions
         $summary = (string) $row['summary'];
 
         try {
+            if (empty($meta['rollback_of'])) {
+                RateLimiter::checkWrite($ctx, $ops, false);
+            }
             // Réglages et droits revérifiés maintenant (ils ont pu changer depuis l'aperçu)
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
@@ -309,15 +316,35 @@ final class PendingActions
             'annulation_forcée' => !empty($meta['force']) ? true : null,
         ], fn($v) => $v !== null);
 
+        $reservation = null;
         try {
             // Réglages revérifiés à l'exécution (ils ont pu changer entre l'aperçu et la confirmation)
             Permissions::assertOps($ops, $rollback_of > 0);
-            $results = Operations::execute($ops, $journal, $before_commit);
+            if ($rollback_of === 0) {
+                $reservation = RateLimiter::reserveTickets($ctx, $ops);
+            }
+            // Dans la transaction, avant validation : tickets réellement créés au-delà de la réservation
+            // réservés à leur tour, ou refus (tout le lot est alors annulé)
+            $commit_hook = function (array $results) use ($ctx, $ops, &$reservation, $before_commit): void {
+                if ($reservation !== null) {
+                    RateLimiter::extendTickets($ctx, $reservation, RateLimiter::actualTickets($ops, $results) - $reservation['n']);
+                }
+                if ($before_commit !== null) {
+                    $before_commit($results);
+                }
+            };
+            $results = Operations::execute($ops, $journal, $commit_hook);
         } catch (ToolException $e) {
+            if ($reservation !== null) {
+                RateLimiter::settleTickets($reservation, 0);
+            }
             AuditLog::write($ctx, $tool, 'échec', $summary, $trace + ['erreur' => $e->getMessage(), 'détails' => $e->getDetails(), 'operations' => $ops], null, $rollback_of);
             throw $e;
         }
 
+        if ($reservation !== null) {
+            RateLimiter::settleTickets($reservation, RateLimiter::actualTickets($ops, $results));
+        }
         $undoability = Operations::undoability($journal);
         $log_id = AuditLog::write($ctx, $tool, 'exécuté', $summary, $trace + [
             'operations' => $ops, 'résultats' => $results, 'annulabilité' => $undoability,

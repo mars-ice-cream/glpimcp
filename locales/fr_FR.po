@@ -368,3 +368,78 @@ msgstr "toutes les entités du profil"
 
 msgid "expired"
 msgstr "expirée"
+
+msgid "A managed client needs an imposed profile."
+msgstr "Un client géré doit avoir un profil imposé."
+
+msgid "Abuse protection (all tokens)"
+msgstr "Protection contre les abus (tous les jetons)"
+
+msgid "Limits per token or per account, 0 = unlimited. Beyond the threshold of refusals within 10 minutes, the token is suspended and the administrators are alerted by e-mail."
+msgstr "Limites par jeton ou par compte, 0 = illimité. Au-delà du seuil de refus en 10 minutes, le jeton est suspendu et les administrateurs sont alertés par e-mail."
+
+msgid "Requests per minute per token"
+msgstr "Requêtes par minute par jeton"
+
+msgid "Changes per hour per account"
+msgstr "Écritures par heure par compte"
+
+msgid "Tickets created per hour per account"
+msgstr "Tickets créés par heure par compte"
+
+msgid "Suspend a token after N refusals in 10 min"
+msgstr "Suspendre un jeton après N refus en 10 min"
+
+msgid "Alert e-mails (suspended token, client quota reached)"
+msgstr "E-mails d'alerte (jeton suspendu, quota d'un client atteint)"
+
+msgid "Trusted reverse proxies (IP or CIDR)"
+msgstr "Reverse proxies de confiance (IP ou CIDR)"
+
+msgid "Only behind these proxies is X-Forwarded-For used to know the client IP (IP restrictions of AI clients)."
+msgstr "X-Forwarded-For n'est utilisé pour connaître l'IP du client que derrière ces proxies (restrictions d'IP des clients IA)."
+
+msgid "Company policy"
+msgstr "Politique d'entreprise"
+
+msgid "Managed by the company"
+msgstr "Géré par l'entreprise"
+
+msgid "No consent page (access granted after GLPI / SSO login)"
+msgstr "Sans page de consentement (accès accordé après la connexion GLPI / SSO)"
+
+msgid "Imposed profile"
+msgstr "Profil imposé"
+
+msgid "Days"
+msgstr "Jours"
+
+msgid "Allowed IPs (CIDR)"
+msgstr "IP autorisées (CIDR)"
+
+msgid "Req./min"
+msgstr "Req./min"
+
+msgid "Changes/h per account"
+msgstr "Écritures/h par compte"
+
+msgid "Tickets/h per account"
+msgstr "Tickets/h par compte"
+
+msgid "Changes/h whole client"
+msgstr "Écritures/h pour tout le client"
+
+msgid "default"
+msgstr "défaut"
+
+msgid "Managed: only accounts having the imposed profile can connect, always with that profile. Never more rights than the account has."
+msgstr "Géré : seuls les comptes qui ont le profil imposé peuvent se connecter, toujours avec ce profil. Jamais plus de droits que le compte."
+
+msgid "Tokens suspended by abuse protection"
+msgstr "Jetons suspendus par la protection contre les abus"
+
+msgid "Reactivate"
+msgstr "Réactiver"
+
+msgid "This assistant is reserved by your administrator to accounts with the profile \"%s\". Your account does not have it."
+msgstr "Cet assistant est réservé par votre administrateur aux comptes ayant le profil « %s ». Votre compte ne l'a pas."
