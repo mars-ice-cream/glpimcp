@@ -15,7 +15,10 @@ Session::checkRight('config', UPDATE);
 
 if (isset($_POST['update'])) {
     $mode = in_array($_POST['confirm_mode'] ?? '', ['all', 'sensitive'], true) ? $_POST['confirm_mode'] : 'all';
+    $approval = in_array($_POST['approval_scope'] ?? '', \GlpiPlugin\Glpimcp\Mcp\Approval::SCOPES, true) ? $_POST['approval_scope'] : 'critical';
+    $before = Config::getConfigurationValues('plugin:glpimcp', ['confirm_mode', 'approval_scope']);
     Config::setConfigurationValues('plugin:glpimcp', [
+        'approval_scope'      => $approval,
         'confirm_mode'        => $mode,
         'pending_ttl_minutes' => max(1, min(1440, (int) ($_POST['pending_ttl_minutes'] ?? 30))),
         'max_search_results'  => max(1, min(200, (int) ($_POST['max_search_results'] ?? 50))),
@@ -27,6 +30,13 @@ if (isset($_POST['update'])) {
             preg_split('/\R/', (string) ($_POST['oauth_trusted_resources'] ?? ''))
         ), fn($u) => filter_var($u, FILTER_VALIDATE_URL) && preg_match('#^https?://#', $u)))),
     ]);
+    if (($before['confirm_mode'] ?? 'all') !== $mode || ($before['approval_scope'] ?? 'critical') !== $approval) {
+        \GlpiPlugin\Glpimcp\Mcp\AuditLog::write(
+            new \GlpiPlugin\Glpimcp\Mcp\Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),
+            'configuration', 'exécuté', 'Politique de confirmation modifiée',
+            ['avant' => $before, 'après' => ['confirm_mode' => $mode, 'approval_scope' => $approval]]
+        );
+    }
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();
 }
@@ -94,8 +104,13 @@ echo '<div class="row g-3">';
 echo '<div class="col-md-5"><label class="form-label">' . __('Confirmation of AI changes', 'glpimcp') . '</label>';
 echo '<select name="confirm_mode" class="form-select">';
 echo '<option value="all"' . (($cfg['confirm_mode'] ?? 'all') === 'all' ? ' selected' : '') . '>' . __('Every change is previewed and must be confirmed (recommended)', 'glpimcp') . '</option>';
-echo '<option value="sensitive"' . (($cfg['confirm_mode'] ?? '') === 'sensitive' ? ' selected' : '') . '>' . __('Only sensitive changes (deletions, rights, configuration, users…) must be confirmed', 'glpimcp') . '</option>';
-echo '</select></div>';
+echo '<option value="sensitive"' . (($cfg['confirm_mode'] ?? '') === 'sensitive' ? ' selected' : '') . '>' . __('Ordinary changes are applied immediately; only sensitive ones need a confirmation', 'glpimcp') . '</option>';
+echo '</select><small class="text-muted">' . __('The confirmation is a second call made by the assistant: it does not prove that a human saw the preview.', 'glpimcp') . '</small></div>';
+echo '<div class="col-md-4"><label class="form-label">' . __('Human approval in GLPI', 'glpimcp') . '</label>';
+echo '<select name="approval_scope" class="form-select">';
+echo '<option value="critical"' . (($cfg['approval_scope'] ?? 'critical') === 'critical' ? ' selected' : '') . '>' . __('Critical actions (permanent deletion, users and groups, profile rights, configuration, forced undo)', 'glpimcp') . '</option>';
+echo '<option value="sensitive"' . (($cfg['approval_scope'] ?? '') === 'sensitive' ? ' selected' : '') . '>' . __('All sensitive actions (also trash, rules, entities, SLA, notifications, merges)', 'glpimcp') . '</option>';
+echo '</select><small class="text-muted">' . __('The user approves in GLPI, logged in with their own account: the assistant cannot do it.', 'glpimcp') . '</small></div>';
 echo '<div class="col-md-3"><label class="form-label">' . __('Preview validity (minutes)', 'glpimcp') . '</label>';
 echo '<input type="number" min="1" max="1440" name="pending_ttl_minutes" class="form-control" value="' . (int) ($cfg['pending_ttl_minutes'] ?? 30) . '"></div>';
 echo '<div class="col-md-3"><label class="form-label">' . __('Max results per search', 'glpimcp') . '</label>';

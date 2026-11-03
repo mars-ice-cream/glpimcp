@@ -76,8 +76,8 @@ msgstr "À envoyer dans l'en-tête HTTP : Authorization: Bearer &lt;jeton&gt;"
 msgid "Summary"
 msgstr "Résumé"
 
-msgid "The assistant will act with exactly your GLPI rights (profile and entities). Every change is shown to you and must be confirmed before it is applied."
-msgstr "L'assistant agira avec exactement vos droits GLPI (profil et entités). Chaque modification vous est montrée et doit être confirmée avant d'être appliquée."
+msgid "The assistant acts within your GLPI rights, limited to the profile and entity chosen for each token. Changes are previewed (unless the administrator chose immediate application of ordinary changes); critical actions always require your own approval in GLPI."
+msgstr "L'assistant agit dans vos droits GLPI, limités au profil et à l'entité choisis pour chaque jeton. Les modifications sont présentées en aperçu (sauf si l'administrateur a choisi l'application immédiate des modifications ordinaires) ; les actions critiques demandent toujours votre propre approbation dans GLPI."
 
 msgid "Token generated. Copy it now."
 msgstr "Jeton généré. Copiez-le maintenant."
@@ -195,11 +195,11 @@ msgstr "Désactivé"
 msgid "Enable"
 msgstr "Activer"
 
-msgid "Every change is shown to you and must be confirmed before it is applied, and can be undone from the AI journal."
-msgstr "Chaque modification vous est montrée et doit être confirmée avant d'être appliquée ; elle peut être annulée depuis le journal IA."
+msgid "Changes are previewed before being applied (unless the administrator chose immediate application of ordinary changes); critical actions require your own approval in GLPI. What can be undone is shown, and undone from the AI journal."
+msgstr "Les modifications sont présentées en aperçu avant d'être appliquées (sauf si l'administrateur a choisi l'application immédiate des modifications ordinaires) ; les actions critiques demandent votre propre approbation dans GLPI. Ce qui peut être défait est indiqué, et se défait depuis le journal IA."
 
-msgid "It will act as %s, with exactly the rights of the profile chosen below — never more."
-msgstr "Il agira en tant que %s, avec exactement les droits du profil choisi ci-dessous — jamais plus."
+msgid "It will act as %s, limited to the profile chosen below — it will never be able to use another profile with this access."
+msgstr "Il agira en tant que %s, limité au profil choisi ci-dessous — il ne pourra jamais utiliser un autre profil avec cet accès."
 
 msgid "No AI client connected through OAuth yet."
 msgstr "Aucun client IA connecté par OAuth pour l'instant."
@@ -239,3 +239,132 @@ msgstr "Serveurs relais autorisés (une URL MCP par ligne, ex. Dokore)"
 
 msgid "An AI client connected to such a relay can obtain a token here; the relay forwards it and GLPI rights still apply. Leave empty if you do not use one."
 msgstr "Un client IA connecté à un tel relais peut obtenir un jeton ici ; le relais le transmet et les droits GLPI s'appliquent toujours. Laisser vide si vous n'en utilisez pas."
+
+msgid "(with sub-entities)"
+msgstr "(avec les sous-entités)"
+
+msgid "AI assistant: approval"
+msgstr "Assistant IA : approbation"
+
+msgid "Action approved. You can tell the assistant to go ahead: it will now be able to confirm it."
+msgstr "Action approuvée. Vous pouvez dire à l'assistant de continuer : il peut maintenant la confirmer."
+
+msgid "Action refused. Nothing has been changed."
+msgstr "Action refusée. Rien n'a été modifié."
+
+msgid "Actions waiting for your approval"
+msgstr "Actions en attente de votre approbation"
+
+msgid "All entities of the profile"
+msgstr "Toutes les entités du profil"
+
+msgid "All sensitive actions (also trash, rules, entities, SLA, notifications, merges)"
+msgstr "Toutes les actions sensibles (aussi corbeille, règles, entités, SLA, notifications, fusions)"
+
+msgid "An AI assistant asks to perform a critical action on your behalf"
+msgstr "Un assistant IA demande à faire une action critique en votre nom"
+
+msgid "Approved by"
+msgstr "Approuvée par"
+
+msgid "Approved, waiting for the assistant to execute it"
+msgstr "Approuvée, en attente d'exécution par l'assistant"
+
+msgid "Before → after / values"
+msgstr "Avant → après / valeurs"
+
+msgid "Being executed"
+msgstr "En cours d'exécution"
+
+msgid "Can be undone"
+msgstr "Annulable"
+
+msgid "Cancelled"
+msgstr "Annulée"
+
+msgid "Choose the profile the assistant will be limited to."
+msgstr "Choisissez le profil auquel l'assistant sera limité."
+
+msgid "Critical actions (permanent deletion, users and groups, profile rights, configuration, forced undo)"
+msgstr "Actions critiques (suppression définitive, utilisateurs et groupes, droits des profils, configuration, annulation forcée)"
+
+msgid "Effects outside the GLPI database (e-mails already sent, calls to external services by other plugins) cannot be undone by the AI journal."
+msgstr "Les effets hors de la base GLPI (e-mails déjà envoyés, appels à des services externes par d'autres plugins) ne peuvent pas être défaits par le journal IA."
+
+msgid "Entity"
+msgstr "Entité"
+
+msgid "Exact changes"
+msgstr "Modifications exactes"
+
+msgid "Executed"
+msgstr "Exécutée"
+
+msgid "Expires on"
+msgstr "Expire le"
+
+msgid "Failed (nothing was applied)"
+msgstr "Échec (rien n'a été appliqué)"
+
+msgid "Fixed limit: the assistant can never use another profile with this token."
+msgstr "Limite fixe : l'assistant ne pourra jamais utiliser un autre profil avec ce jeton."
+
+msgid "Forced: these later changes will be overwritten:"
+msgstr "Forcée : ces modifications ultérieures seront écrasées :"
+
+msgid "Human approval in GLPI"
+msgstr "Approbation humaine dans GLPI"
+
+msgid "I have checked and I approve"
+msgstr "J'ai vérifié et j'approuve"
+
+msgid "Include sub-entities"
+msgstr "Inclure les sous-entités"
+
+msgid "Obsolete: data changed since the preview"
+msgstr "Obsolète : les données ont changé depuis l'aperçu"
+
+msgid "Ordinary changes are applied immediately; only sensitive ones need a confirmation"
+msgstr "Les écritures ordinaires sont appliquées immédiatement ; seules les sensibles demandent une confirmation"
+
+msgid "Proposed on"
+msgstr "Proposée le"
+
+msgid "Refuse"
+msgstr "Refuser"
+
+msgid "Refused"
+msgstr "Refusée"
+
+msgid "Target"
+msgstr "Cible"
+
+msgid "The confirmation is a second call made by the assistant: it does not prove that a human saw the preview."
+msgstr "La confirmation est un second appel fait par l'assistant : elle ne prouve pas qu'un humain a vu l'aperçu."
+
+msgid "The user approves in GLPI, logged in with their own account: the assistant cannot do it."
+msgstr "L'utilisateur approuve dans GLPI, connecté avec son propre compte : l'assistant ne peut pas le faire."
+
+msgid "This entity is not reachable with the chosen profile."
+msgstr "Cette entité n'est pas accessible avec le profil choisi."
+
+msgid "This is the undo of AI action #%d."
+msgstr "Il s'agit de l'annulation de l'action IA n°%d."
+
+msgid "This proposal does not exist, has expired, or does not concern your account."
+msgstr "Cette proposition n'existe pas, a expiré ou ne concerne pas votre compte."
+
+msgid "Waiting for your decision"
+msgstr "En attente de votre décision"
+
+msgid "Warnings"
+msgstr "Avertissements"
+
+msgid "Why your approval is required:"
+msgstr "Pourquoi votre approbation est nécessaire :"
+
+msgid "all entities of the profile"
+msgstr "toutes les entités du profil"
+
+msgid "expired"
+msgstr "expirée"

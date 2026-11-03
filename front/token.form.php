@@ -11,15 +11,20 @@ Session::checkLoginUser();
 $users_id = (int) Session::getLoginUserID();
 
 if (isset($_POST['generate'])) {
-    $profiles_id = (int) ($_POST['profiles_id'] ?? 0);
-    // On ne peut choisir qu'un profil qu'on possède réellement
-    if ($profiles_id > 0 && !in_array($profiles_id, Profile_User::getUserProfiles($users_id), false)) {
-        $profiles_id = 0;
+    // Le profil choisi devient la LIMITE du jeton ; « profil par défaut » est résolu maintenant et figé
+    $profiles_id = \GlpiPlugin\Glpimcp\Mcp\TokenScope::resolveProfile($users_id, (int) ($_POST['profiles_id'] ?? 0));
+    $entities_id = isset($_POST['entities_id']) && $_POST['entities_id'] !== '' && (int) $_POST['entities_id'] >= 0 ? (int) $_POST['entities_id'] : null;
+    $recursive   = !empty($_POST['is_recursive']);
+    if ($profiles_id <= 0) {
+        Session::addMessageAfterRedirect(__('Choose the profile the assistant will be limited to.', 'glpimcp'), false, ERROR);
+    } elseif ($entities_id !== null && !Token::profileCoversEntity($users_id, $profiles_id, $entities_id)) {
+        Session::addMessageAfterRedirect(__('This entity is not reachable with the chosen profile.', 'glpimcp'), false, ERROR);
+    } else {
+        $days = max(0, min(3650, (int) ($_POST['days'] ?? 90)));
+        $name = trim((string) ($_POST['name'] ?? ''));
+        $_SESSION['glpimcp_new_token'] = Token::generate($users_id, mb_substr($name, 0, 100), $profiles_id, $entities_id, $days, $recursive);
+        Session::addMessageAfterRedirect(__('Token generated. Copy it now.', 'glpimcp'));
     }
-    $days = max(0, min(3650, (int) ($_POST['days'] ?? 90)));
-    $name = trim((string) ($_POST['name'] ?? ''));
-    $_SESSION['glpimcp_new_token'] = Token::generate($users_id, mb_substr($name, 0, 100), $profiles_id, null, $days);
-    Session::addMessageAfterRedirect(__('Token generated. Copy it now.', 'glpimcp'));
 } elseif (isset($_POST['revoke'])) {
     $token = new Token();
     if ($token->getFromDB((int) $_POST['id'])) {

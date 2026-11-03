@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.4.0 — 2026-11-03 (sécurité)
+- **Approbation humaine vérifiée dans GLPI** pour les actions critiques (suppression définitive, comptes,
+  groupes et habilitations, droits des profils, configuration, annulation forcée) : page GLPI avec session
+  authentifiée du même utilisateur et CSRF ; approbation liée par empreinte à la proposition exacte (lot,
+  aperçu, état des objets visés, jeton, profil, entités) ; le journal enregistre qui a approuvé et quand.
+  Portée réglable (critiques / toutes les sensibles). Le jeton MCP et le `confirmation_id` ne suffisent plus.
+- **Confirmation à usage unique atomique** : réservation par UPDATE conditionnel, statut « exécuté » validé
+  dans la transaction des écritures ; confirmations simultanées et confirmation/annulation simultanées
+  gérées ; une nouvelle tentative ne rejoue jamais une écriture (`déjà_exécutée`, ou nouvel aperçu exigé).
+- **Aperçu revérifié à l'exécution** : droits, interrupteurs, aperçu et état des objets visés recalculés ;
+  si les données ont changé, la confirmation est refusée et un nouvel aperçu est demandé.
+- **Périmètre du jeton imposé** : le profil accordé est une limite (`X-GLPI-Profile` différent → 403,
+  `glpi_switch_context` ne change plus de profil) ; entité accordée et sous-entités respectées
+  (`X-GLPI-Entity` hors périmètre → 403) ; proposition liée au jeton et au contexte de son aperçu.
+  Choix de l'entité à la création d'un jeton.
+- **Annulation** : conflits revérifiés au moment de l'exécution ; annulabilité « totale / partielle / aucune »
+  affichée et journalisée ; notifications liées aux créations ITIL signalées comme non rappelables.
+- Messages d'échec exacts : la transaction annule les écritures en base, pas les effets hors base.
+- Les réglages de GLPI MCP ne sont plus modifiables via l'assistant (`glpi_apply_operations` compris).
+- Tests de bout en bout : 8 nouveaux scénarios ; job CI sur un GLPI 11.0.12 + MariaDB jetables.
+
+**Compatibilité / mise à jour** : jetons « profil par défaut » figés sur le profil par défaut actuel du
+compte (ou désactivés si indéterminable) ; propositions en attente retirées ; en mode « sensibles », les
+écritures ordinaires restent immédiates ; un client qui changeait de profil par en-tête reçoit une 403.
+
 ## 1.3.0 — 2026-11-03
 - **Intégration SecIncident** (si le plugin est actif) : `glpi_secincident_list`, `glpi_secincident_get`,
   `glpi_secincident_declare`, `glpi_secincident_add_event`, `glpi_secincident_add_iocs`,

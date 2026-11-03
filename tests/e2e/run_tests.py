@@ -9,18 +9,24 @@ GLPI MCP (socle) — suite de tests de non-régression de bout en bout (via le p
     export TOKEN_ADMIN=gmcp_...       # jeton d'un Super-Admin
     export TOKEN_TECH=gmcp_...        # jeton d'un Technicien (optionnel)
     export TOKEN_SELFSERVICE=gmcp_... # jeton d'un Self-Service (optionnel)
-    export GLPI_LOGIN=glpi GLPI_PASSWORD=...   # optionnel : test OAuth avec connexion GLPI
+    export GLPI_LOGIN=glpi GLPI_PASSWORD=...   # connexion GLPI : OAuth et approbation humaine
+    # Jeu de données de périmètre (tests/e2e/FixturesCommand.php) : TOKEN_DUAL_TECH, TOKEN_DUAL_ADMIN_E1,
+    # E1, E2, DUAL_ID, P_TECH, P_ADMIN, et DUAL_LOGIN/DUAL_PASSWORD pour l'approbation par un autre compte
+    export DB_CLI="mysql -h127.0.0.1 -uroot -proot glpi"   # optionnel : vérifications et retraits de droits en base
     python3 tests/e2e/run_tests.py [-k motif] [-v]
 
 Tout ce que la suite crée est préfixé « TEST-MCP » puis annulé via le journal IA (rollback) en fin de test.
 Code de sortie : 0 si tout passe, 1 sinon.
 """
 import base64
+import concurrent.futures
 import hashlib
 import json
 import os
 import re
 import secrets
+import shlex
+import subprocess
 import sys
 import time
 import traceback
@@ -33,7 +39,9 @@ except ImportError:
 
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:8080/plugins/glpimcp/mcp")
 BASE = MCP_URL.split("/plugins/")[0]
-TOK = {k: os.environ.get("TOKEN_" + k.upper()) for k in ("admin", "tech", "selfservice")}
+TOK = {k: os.environ.get("TOKEN_" + k.upper()) for k in ("admin", "tech", "selfservice", "dual_tech", "dual_admin_e1")}
+FIX = {k: os.environ.get(k) for k in ("E1", "E2", "DUAL_ID", "P_TECH", "P_ADMIN")}
+DB_CLI = os.environ.get("DB_CLI")
 VERBOSE = "-v" in sys.argv
 PATTERN = sys.argv[sys.argv.index("-k") + 1] if "-k" in sys.argv else None
 STAMP = time.strftime("%H%M%S")
@@ -48,10 +56,11 @@ class Skip(Exception):
 
 
 # ----------------------------------------------------------------------------- client MCP
-def rpc(token, method, params=None, raw=False):
+def rpc(token, method, params=None, raw=False, headers=None):
     h = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
     if token:
         h["Authorization"] = "Bearer " + token
+    h.update(headers or {})
     r = requests.post(MCP_URL, headers=h, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}, timeout=60)
     if raw:
         return r
@@ -99,6 +108,63 @@ def propose_confirm(token, name, args):
     assert r["statut"] == "exécuté", r
     journal_ids.append(r["journal_id"])
     return r
+
+
+def db(sql):
+    """Requête SQL sur la base de TEST (DB_CLI) ; renvoie les lignes (listes de chaînes)."""
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni : vérification en base impossible")
+    out = subprocess.run(shlex.split(DB_CLI) + ["-N", "-B", "-e", sql], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    return [line.split("\t") for line in out.stdout.splitlines() if line]
+
+
+def db_count(sql):
+    return int(db(sql)[0][0])
+
+
+def glpi_session(login=None, password=None):
+    """Session web GLPI authentifiée (formulaire de connexion avec son jeton CSRF)."""
+    login = login or os.environ.get("GLPI_LOGIN")
+    password = password or os.environ.get("GLPI_PASSWORD")
+    if not (login and password):
+        raise Skip("GLPI_LOGIN / GLPI_PASSWORD non fournis : approbation humaine non testable")
+    s = requests.Session()
+    page = s.get(BASE + "/", timeout=30)
+    form = re.search(r'<form[^>]*action="([^"]*login[^"]*)"[^>]*>(.*?)</form>', page.text, re.S)
+    assert form, "formulaire de connexion GLPI introuvable"
+    fields = {m.group(1): m.group(2).replace("&amp;", "&") for m in re.finditer(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form.group(2))}
+    fields.update({"login_name": login, "login_password": password})
+    after = s.post(up.urljoin(page.url, form.group(1)), data=fields, timeout=30)
+    assert "login_name" not in after.text, f"connexion GLPI refusée pour {login}"
+    return s
+
+
+def approval_page(session, url):
+    page = session.get(url, timeout=30)
+    assert page.status_code == 200, page.status_code
+    return page
+
+
+def approve(session, url, decision="approve", csrf=True):
+    page = approval_page(session, url)
+    uuid = up.parse_qs(up.urlparse(url).query)["uuid"][0]
+    data = {"uuid": uuid, "decision": decision}
+    if csrf:
+        tokens = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)
+        assert tokens, "formulaire d'approbation absent"
+        data["_glpi_csrf_token"] = tokens[-1]
+    return session.post(url.split("?")[0], data=data, timeout=30, allow_redirects=True)
+
+
+def pending_row(uuid):
+    rows = db(f"SELECT status, approved_by, logs_id FROM glpi_plugin_glpimcp_pendingactions WHERE uuid='{uuid}'")
+    return rows[0] if rows else None
+
+
+def need_fixtures():
+    if not (TOK.get("dual_tech") and TOK.get("dual_admin_e1") and FIX.get("E1") and FIX.get("E2")):
+        raise Skip("jeu de données de périmètre absent (tests/e2e/FixturesCommand.php)")
 
 
 def need(*roles):
@@ -175,7 +241,8 @@ def apercu_puis_confirmation_usage_unique():
         refused(TOK["tech"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
     r = ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
     journal_ids.append(r["journal_id"])
-    refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    again = ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert again["statut"] == "déjà_exécutée" and again["journal_id"] == r["journal_id"], again
     found = ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " lieu"})
     assert found["renvoyés"] == 1
 
@@ -192,10 +259,10 @@ def annulation_a_l_apercu():
 
 
 @test
-def transaction_tout_ou_rien():
+def apercu_obsolete_refuse_sans_effet():
     need("admin")
-    # Lot [fusion A←B, catégorie créée, classement de C] préparé, puis C disparaît avant la confirmation :
-    # l'exécution doit échouer ENTIÈREMENT (B pas fusionné, catégorie pas créée).
+    # Lot [fusion A←B, catégorie créée, classement de C] prévisualisé, puis C disparaît avant la confirmation :
+    # la confirmation est refusée (nouvel aperçu exigé) et rien n'est appliqué.
     ids = {}
     for k in ("A", "B", "C"):
         r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Software", "fields": {"name": f"{PREFIX} Atomic {k}", "entities_id": 0}}]})
@@ -216,6 +283,34 @@ def transaction_tout_ou_rien():
     assert left["renvoyées"] == 2, f"fusion appliquée malgré l'échec : {left['renvoyées']}"
     cats = ok(TOK["admin"], "glpi_search", {"itemtype": "SoftwareCategory", "query": PREFIX + " cat"})
     assert cats["renvoyés"] == 0, "catégorie créée malgré l'échec"
+    # Nouvelle tentative : pas de réexécution
+    err, data = tool(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert err and "pas rejouée" in json.dumps(data, ensure_ascii=False), data
+
+
+@test
+def transaction_echec_en_cours_d_execution():
+    need("admin")
+    # L'aperçu est valide, mais GLPI refuse la 3e écriture (deux entités de même nom sous le même parent) :
+    # la catégorie et la 1re entité, déjà écrites dans la transaction, doivent disparaître.
+    name = PREFIX + " entité doublon"
+    p = ok(TOK["admin"], "glpi_apply_operations", {"summary": "test transaction", "client": "tests", "operations": [
+        {"op": "add", "itemtype": "SoftwareCategory", "input": {"name": PREFIX + " cat tx"}},
+        {"op": "add", "itemtype": "Entity", "input": {"name": name, "entities_id": 0}},
+        {"op": "add", "itemtype": "Entity", "input": {"name": name, "entities_id": 0}}]})
+    if p.get("statut") != "en_attente_de_confirmation":
+        raise Skip("mode « sensibles seulement »")
+    err, data = tool(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert err, f"la 2e entité de même nom aurait dû être refusée : {data}"
+    txt = json.dumps(data, ensure_ascii=False)
+    assert "transaction" in txt and "hors base" in txt, f"message d'échec sans portée réelle de l'annulation : {txt}"
+    cats = ok(TOK["admin"], "glpi_search", {"itemtype": "SoftwareCategory", "query": PREFIX + " cat tx"})
+    assert cats["renvoyés"] == 0, "écriture partielle conservée"
+    if DB_CLI:
+        assert db_count(f"SELECT COUNT(*) FROM glpi_entities WHERE name='{name}'") == 0, "entité conservée malgré l'échec"
+        assert db_count(f"SELECT COUNT(*) FROM glpi_softwarecategories WHERE name='{PREFIX} cat tx'") == 0
+        assert pending_row(p["confirmation_id"])[0] == "failed"
+
 
 @test
 def rollback_et_conflits():
@@ -229,10 +324,210 @@ def rollback_et_conflits():
     err, data = tool(TOK["admin"], "glpi_rollback_action", {"log_id": jid})
     assert err and "conflit" in json.dumps(data, ensure_ascii=False).lower(), f"conflit non détecté : {data}"
     p = ok(TOK["admin"], "glpi_rollback_action", {"log_id": jid, "force": True})
-    ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert p["statut"] == "en_attente_d_approbation_humaine", "annulation forcée sans approbation humaine"
+    refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
+    approve(glpi_session(), p["approbation_humaine"]["url"])
+    r = ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert r.get("approuvé_par"), r
     found = ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " rollback"})
     assert found["renvoyés"] == 0, "objet toujours présent après annulation"
     refused(TOK["admin"], "glpi_rollback_action", {"log_id": jid})  # déjà annulé
+
+
+@test
+def confirmations_simultanees_un_seul_effet():
+    need("admin")
+    for i in range(5):
+        name = f"{PREFIX} course {i}"
+        p = ok(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": name}}]})
+        if p.get("statut") != "en_attente_de_confirmation":
+            journal_ids.append(p["journal_id"])
+            raise Skip("mode « sensibles seulement »")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as ex:
+            futs = [ex.submit(tool, TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}) for _ in range(4)]
+            res = [f.result() for f in futs]
+        executed = [d for err, d in res if not err and d.get("statut") == "exécuté"]
+        assert len(executed) == 1, f"essai {i} : {len(executed)} exécutions pour une seule confirmation : {res}"
+        journal_ids.append(executed[0]["journal_id"])
+        for err, d in res:
+            if not (not err and d.get("statut") == "exécuté"):
+                txt = json.dumps(d, ensure_ascii=False)
+                assert (not err and d.get("statut") == "déjà_exécutée") or (err and "en cours" in txt), f"réponse inattendue : {txt}"
+        found = ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": name})
+        assert found["renvoyés"] == 1, f"essai {i} : {found['renvoyés']} lieux créés"
+        if DB_CLI:
+            assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE name='{name}'") == 1
+            assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE status='exécuté' AND details LIKE '%{p['confirmation_id']}%'") == 1
+
+
+@test
+def confirmation_et_annulation_simultanees():
+    need("admin")
+    name = f"{PREFIX} confirmer-ou-annuler"
+    p = ok(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": name}}]})
+    if p.get("statut") != "en_attente_de_confirmation":
+        journal_ids.append(p["journal_id"])
+        raise Skip("mode « sensibles seulement »")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        fc = ex.submit(tool, TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+        fa = ex.submit(tool, TOK["admin"], "glpi_cancel_action", {"confirmation_id": p["confirmation_id"]})
+        (cerr, cdata), (aerr, adata) = fc.result(), fa.result()
+    n = ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": name})["renvoyés"]
+    if not cerr and cdata.get("statut") == "exécuté":
+        journal_ids.append(cdata["journal_id"])
+        assert aerr and "trop tard" in json.dumps(adata, ensure_ascii=False).lower(), adata
+        assert n == 1
+    else:
+        assert not aerr and adata["statut"] == "annulé", (cdata, adata)
+        assert n == 0, "annulée mais exécutée"
+    if DB_CLI:
+        assert pending_row(p["confirmation_id"])[0] == ("executed" if n == 1 else "cancelled")
+
+
+@test
+def approbation_humaine_obligatoire_pour_une_purge():
+    need("admin")
+    w = ok(TOK["admin"], "glpi_whoami")
+    if "Supprimer définitivement" in w["types_d_actions_désactivés_par_l_admin"]:
+        raise Skip("« Supprimer définitivement » désactivé sur ce GLPI (la CI l'active)")
+    r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " à purger"}}]})
+    lid = r["résultats"][0]["id"]
+    journal_ids.remove(r["journal_id"])
+    p = ok(TOK["admin"], "glpi_delete_items", {"items": [{"itemtype": "Location", "id": lid, "purge": True}]})
+    assert p["statut"] == "en_attente_d_approbation_humaine", p
+    assert any("définitive" in x for x in p["approbation_humaine"]["raisons"]), p
+    url = p["approbation_humaine"]["url"]
+    # Le jeton MCP et le confirmation_id ne suffisent pas
+    refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
+    s = glpi_session()
+    # Sans jeton CSRF : refusé par GLPI, rien n'est approuvé
+    approve(s, url, csrf=False)
+    refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
+    # Un autre compte connecté à GLPI ne voit ni ne peut approuver la proposition
+    if os.environ.get("DUAL_LOGIN"):
+        other = approval_page(glpi_session(os.environ["DUAL_LOGIN"], os.environ["DUAL_PASSWORD"]), url)
+        assert 'name="decision"' not in other.text, "proposition visible par un autre compte"
+    page = approval_page(s, url)
+    assert "à purger" in page.text and "NON" in page.text, "aperçu (cible, irréversibilité) absent de la page d'approbation"
+    approve(s, url)
+    # Modification de la cible après l'approbation : l'approbation ne couvre plus l'état réel
+    propose_confirm(TOK["admin"], "glpi_update_items", {"items": [{"itemtype": "Location", "id": lid, "fields": {"comment": "modifié après approbation"}}]})
+    refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="ont changé")
+    assert ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " à purger"})["renvoyés"] == 1
+    # Nouvelle proposition, approuvée, exécutée
+    p2 = ok(TOK["admin"], "glpi_delete_items", {"items": [{"itemtype": "Location", "id": lid, "purge": True}]})
+    approve(s, p2["approbation_humaine"]["url"])
+    r2 = ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p2["confirmation_id"]})
+    assert r2["statut"] == "exécuté" and r2.get("approuvé_par"), r2
+    assert r2["annulabilité"] == "aucune" and r2.get("non_annulable"), r2
+    assert ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " à purger"})["renvoyés"] == 0
+    if DB_CLI:
+        assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE id={lid}") == 0
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE id={r2['journal_id']} AND details LIKE '%approbation%'") == 1
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE status='approuvé' AND details LIKE '%{p2['confirmation_id']}%'") == 1
+
+
+@test
+def alias_de_type_meme_classification_que_l_execution():
+    need("admin")
+    # « utilisateur » est résolu en User à l'exécution : il doit être classé comme tel (interrupteur
+    # « Utilisateurs et groupes », approbation humaine), jamais comme un élément ordinaire.
+    err, data = tool(TOK["admin"], "glpi_apply_operations", {"summary": "alias", "client": "tests", "operations": [
+        {"op": "add", "itemtype": "utilisateur", "input": {"name": PREFIX.replace(" ", "-") + "-alias"}}]})
+    if not err:
+        assert data.get("statut") == "en_attente_d_approbation_humaine", f"compte créable sans approbation via un alias : {data}"
+        ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": data["confirmation_id"]})
+    else:
+        assert "Utilisateurs et groupes" in json.dumps(data, ensure_ascii=False), data
+
+
+@test
+def jeton_limite_a_son_profil():
+    need_fixtures()
+    w = ok(TOK["dual_tech"], "glpi_whoami")
+    assert w["profil_actif"]["id"] == int(FIX["P_TECH"]), w["profil_actif"]
+    assert len(w["profils_du_compte"]) >= 2, "le compte de test doit avoir deux profils"
+    r = rpc(TOK["dual_tech"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True, headers={"X-GLPI-Profile": FIX["P_ADMIN"]})
+    assert r.status_code == 403 and "limité au profil" in r.json()["error"]["message"], (r.status_code, r.text[:300])
+    r = rpc(TOK["dual_tech"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True, headers={"X-GLPI-Profile": FIX["P_TECH"]})
+    assert r.status_code == 200
+    refused(TOK["dual_tech"], "glpi_switch_context", {"profiles_id": int(FIX["P_ADMIN"])}, contains="limité au profil")
+    assert ok(TOK["dual_tech"], "glpi_whoami")["profil_actif"]["id"] == int(FIX["P_TECH"]), "profil élargi après switch_context"
+    # Le Technicien ne crée pas de lieu, même si le même compte est Admin ailleurs
+    refused(TOK["dual_tech"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " via tech", "entities_id": int(FIX["E1"])}}]})
+
+
+@test
+def jeton_limite_a_son_entite():
+    need_fixtures()
+    need("admin")
+    e1, e2 = int(FIX["E1"]), int(FIX["E2"])
+    w = ok(TOK["dual_admin_e1"], "glpi_whoami")
+    assert w["entité_active"]["id"] == e1 and w["nb_entités_visibles"] == 1, (w["entité_active"], w["nb_entités_visibles"])
+    r = rpc(TOK["dual_admin_e1"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True, headers={"X-GLPI-Entity": str(e2)})
+    assert r.status_code == 403 and "hors du périmètre" in r.json()["error"]["message"], (r.status_code, r.text[:300])
+    r = rpc(TOK["dual_admin_e1"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True, headers={"X-GLPI-Entity": "0"})
+    assert r.status_code == 403, "entité racine acceptée pour un jeton limité à E1"
+    refused(TOK["dual_admin_e1"], "glpi_switch_context", {"entities_id": e2}, contains="hors du périmètre")
+    refused(TOK["dual_admin_e1"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " E2", "entities_id": e2}}]})
+    # Isolation : un lieu de E2 est invisible, un lieu de E1 visible
+    r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [
+        {"itemtype": "Location", "fields": {"name": PREFIX + " isolé E2", "entities_id": e2}},
+        {"itemtype": "Location", "fields": {"name": PREFIX + " visible E1", "entities_id": e1}}]})
+    assert ok(TOK["dual_admin_e1"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " isolé E2"})["renvoyés"] == 0, "fuite d'entité"
+    assert ok(TOK["dual_admin_e1"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " visible E1"})["renvoyés"] == 1
+    err, data = tool(TOK["dual_admin_e1"], "glpi_get_item", {"itemtype": "Location", "id": r["résultats"][0]["id"]})
+    assert err, "lecture directe d'un objet hors périmètre"
+    # Proposition faite avec un jeton, confirmée avec un autre jeton du même compte : refusée
+    p = ok(TOK["dual_admin_e1"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " autre jeton", "entities_id": e1}}]})
+    refused(TOK["dual_tech"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="autre jeton")
+    ok(TOK["dual_admin_e1"], "glpi_cancel_action", {"confirmation_id": p["confirmation_id"]})
+
+
+@test
+def droits_retires_entre_apercu_et_execution():
+    need_fixtures()
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni : retrait de droits impossible")
+    e1, dual, p_admin = int(FIX["E1"]), int(FIX["DUAL_ID"]), int(FIX["P_ADMIN"])
+    name = PREFIX + " droits retirés"
+    p = ok(TOK["dual_admin_e1"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": name, "entities_id": e1}}]})
+    hab = db(f"SELECT id, entities_id, is_recursive FROM glpi_profiles_users WHERE users_id={dual} AND profiles_id={p_admin}")
+    right = db(f"SELECT rights FROM glpi_profilerights WHERE profiles_id={p_admin} AND name='location'")[0][0]
+    try:
+        # 1) Profil retiré au compte : le jeton n'ouvre plus de session, rien n'est exécuté
+        db(f"DELETE FROM glpi_profiles_users WHERE users_id={dual} AND profiles_id={p_admin}")
+        r = rpc(TOK["dual_admin_e1"], "tools/call", {"name": "glpi_confirm_action", "arguments": {"confirmation_id": p["confirmation_id"]}}, raw=True)
+        assert r.status_code == 403, (r.status_code, r.text[:300])
+    finally:
+        for hid, eid, rec in hab:
+            db(f"INSERT INTO glpi_profiles_users (id, users_id, profiles_id, entities_id, is_recursive, is_dynamic, is_default_profile) VALUES ({hid}, {dual}, {p_admin}, {eid}, {rec}, 0, 0)")
+    try:
+        # 2) Droit « lieux » retiré au profil : la revérification à la confirmation refuse
+        db(f"UPDATE glpi_profilerights SET rights=1 WHERE profiles_id={p_admin} AND name='location'")
+        refused(TOK["dual_admin_e1"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="rien n'a été modifié")
+    finally:
+        db(f"UPDATE glpi_profilerights SET rights={right} WHERE profiles_id={p_admin} AND name='location'")
+    assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE name='{name}'") == 0
+    # Droits rétablis : la proposition échouée n'est pas rejouée
+    refused(TOK["dual_admin_e1"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="pas rejouée")
+    assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE name='{name}'") == 0
+
+
+@test
+def annulation_conflit_apparu_apres_l_apercu():
+    need("admin")
+    r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " conflit tardif"}}]})
+    jid, lid = r["journal_id"], r["résultats"][0]["id"]
+    p = ok(TOK["admin"], "glpi_rollback_action", {"log_id": jid})
+    assert not p.get("conflits_ignorés")
+    # Un technicien modifie l'élément entre l'aperçu de l'annulation et sa confirmation
+    propose_confirm(TOK["admin"], "glpi_update_items", {"items": [{"itemtype": "Location", "id": lid, "fields": {"comment": "modifié pendant l'aperçu"}}]})
+    err, data = tool(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    assert err and "rien n'a été modifié" in json.dumps(data, ensure_ascii=False).lower(), data
+    assert ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " conflit tardif"})["renvoyés"] == 1, "modification du technicien écrasée"
+    if DB_CLI:
+        assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE id={lid} AND comment LIKE 'modifié pendant%'") == 1
 
 
 @test
@@ -433,7 +728,12 @@ def cleanup():
         return
     for jid in reversed(journal_ids):
         try:
-            err, p = tool(TOK["admin"], "glpi_rollback_action", {"log_id": jid, "force": True})
+            err, p = tool(TOK["admin"], "glpi_rollback_action", {"log_id": jid})
+            if err and "conflit" in json.dumps(p, ensure_ascii=False).lower():
+                # Annulation forcée : exige l'approbation humaine dans GLPI
+                err, p = tool(TOK["admin"], "glpi_rollback_action", {"log_id": jid, "force": True})
+                if not err and p.get("approbation_humaine"):
+                    approve(glpi_session(), p["approbation_humaine"]["url"])
             if not err and p.get("confirmation_id"):
                 tool(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
         except Exception as e:  # le nettoyage ne doit pas masquer les résultats

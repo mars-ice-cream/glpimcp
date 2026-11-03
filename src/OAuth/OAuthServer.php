@@ -347,8 +347,10 @@ final class OAuthServer
     {
         global $DB;
 
-        if ($profiles_id > 0 && !in_array($profiles_id, Profile_User::getUserProfiles($users_id), false)) {
-            $profiles_id = 0;
+        // Le profil choisi au consentement devient la limite du jeton (profil par défaut figé si aucun choix)
+        $profiles_id = \GlpiPlugin\Glpimcp\Mcp\TokenScope::resolveProfile($users_id, $profiles_id);
+        if ($profiles_id <= 0) {
+            throw new OAuthException('access_denied', 'Aucun profil utilisable pour ce compte.', 403);
         }
         $code = 'gmcpa_' . bin2hex(random_bytes(24));
         $DB->insert(self::CODES, [
