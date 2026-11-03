@@ -68,6 +68,8 @@ GLPI_LOGIN=glpi
 GLPI_PASSWORD=glpi
 DUAL_LOGIN=mcpdual
 DUAL_PASSWORD=mcpdual-E2E-1
+SELF_LOGIN=post-only
+SELF_PASSWORD=postonly
 DB_CLI="mysql -h$DB_HOST -P$DB_PORT -u$DB_USER${DB_PASSWORD:+ -p$DB_PASSWORD} $DB_NAME"
 EOF
 echo "Prêt : variables dans $WORK/e2e.env"

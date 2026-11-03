@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0 — 2026-11-03
+- **Déploiement en entreprise** : un client IA enregistré (ex. l'agent Copilot Studio) peut être passé
+  « géré par l'entreprise » : profil imposé (ex. Self-Service), consentement implicite après la connexion
+  GLPI / SSO, durée des accès, IP autorisées, quotas propres. Seuls les comptes ayant le profil imposé se
+  connectent ; changer de profil imposé coupe les accès accordés avec l'ancien.
+- **Garde-fous contre l'abus d'un jeton** (tous les jetons) : requêtes par minute (429 + Retry-After),
+  écritures et tickets par heure et par compte, écritures par heure pour un client géré, suspension
+  automatique après des refus répétés avec alerte e-mail et journal, réactivation par un administrateur.
+  Limites réglables globalement, par client IA et par jeton.
+- Reverse proxies de confiance : l'IP réelle du client (X-Forwarded-For) n'est lue que derrière eux.
+- Tests : 3 scénarios de bout en bout (débit et suspension, quota de tickets, client géré), tests
+  unitaires des plages d'IP.
+
 ## 1.4.0 — 2026-11-03 (sécurité)
 - **Approbation humaine vérifiée dans GLPI** pour les actions critiques (suppression définitive, comptes,
   groupes et habilitations, droits des profils, configuration, annulation forcée) : page GLPI avec session

@@ -43,6 +43,10 @@ final class PendingActions
 
         $ops = Operations::canonicalize($ops);
         try {
+            if (empty($meta['rollback_of'])) {
+                // Quotas (écritures/heure, tickets/heure, client) : un flot d'aperçus est aussi un abus
+                RateLimiter::checkWrite($ctx, $ops, true);
+            }
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
         } catch (ToolException $e) {
@@ -154,6 +158,9 @@ final class PendingActions
         $summary = (string) $row['summary'];
 
         try {
+            if (empty($meta['rollback_of'])) {
+                RateLimiter::checkWrite($ctx, $ops, false);
+            }
             // Réglages et droits revérifiés maintenant (ils ont pu changer depuis l'aperçu)
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
@@ -318,6 +325,7 @@ final class PendingActions
             throw $e;
         }
 
+        RateLimiter::recordWrite($ctx, $ops);
         $undoability = Operations::undoability($journal);
         $log_id = AuditLog::write($ctx, $tool, 'exécuté', $summary, $trace + [
             'operations' => $ops, 'résultats' => $results, 'annulabilité' => $undoability,

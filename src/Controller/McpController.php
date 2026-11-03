@@ -12,7 +12,10 @@ use Glpi\Http\Firewall;
 use Glpi\Plugin\Hooks;
 use Glpi\Security\Attribute\SecurityStrategy;
 use GlpiPlugin\Glpimcp\Mcp\Context;
+use GlpiPlugin\Glpimcp\Mcp\RateLimitException;
+use GlpiPlugin\Glpimcp\Mcp\RateLimiter;
 use GlpiPlugin\Glpimcp\Mcp\ScopeException;
+use GlpiPlugin\Glpimcp\OAuth\ClientPolicy;
 use GlpiPlugin\Glpimcp\Mcp\TokenScope;
 use GlpiPlugin\Glpimcp\Mcp\Server;
 use GlpiPlugin\Glpimcp\Token;
@@ -64,6 +67,25 @@ final class McpController extends AbstractController
                     ? 'Bearer realm="glpi-mcp", resource_metadata="' . \GlpiPlugin\Glpimcp\OAuth\OAuthServer::resourceMetadataUrl() . '", scope="glpi"'
                     : 'Bearer realm="glpi-mcp"']
             );
+        }
+
+        // Client IA géré par l'entreprise : adresses IP autorisées
+        $client = null;
+        if ((int) ($token['oauthclients_id'] ?? 0) > 0) {
+            $it = $GLOBALS['DB']->request(['FROM' => 'glpi_plugin_glpimcp_oauthclients', 'WHERE' => ['id' => (int) $token['oauthclients_id']], 'LIMIT' => 1]);
+            $client = count($it) ? $it->current() : null;
+            if ($client !== null && !$client['is_active']) {
+                return new JsonResponse(Server::error(null, -32001, 'Forbidden: ce client IA a été désactivé par l\'administrateur GLPI.'), 403, $headers);
+            }
+        }
+        if (!ClientPolicy::ipAllowed($client, ClientPolicy::clientIp($request))) {
+            return new JsonResponse(Server::error(null, -32003, 'Forbidden: adresse IP non autorisée pour ce client IA.'), 403, $headers);
+        }
+        // Garde-fou de débit (avant d'ouvrir une session GLPI)
+        try {
+            RateLimiter::checkRequest($token);
+        } catch (RateLimitException $e) {
+            return new JsonResponse(Server::error(null, -32029, $e->getMessage()), 429, $headers + ['Retry-After' => (string) $e->retry_after]);
         }
 
         try {

@@ -39,8 +39,8 @@ except ImportError:
 
 MCP_URL = os.environ.get("MCP_URL", "http://127.0.0.1:8080/plugins/glpimcp/mcp")
 BASE = MCP_URL.split("/plugins/")[0]
-TOK = {k: os.environ.get("TOKEN_" + k.upper()) for k in ("admin", "tech", "selfservice", "dual_tech", "dual_admin_e1")}
-FIX = {k: os.environ.get(k) for k in ("E1", "E2", "DUAL_ID", "P_TECH", "P_ADMIN")}
+TOK = {k: os.environ.get("TOKEN_" + k.upper()) for k in ("admin", "tech", "selfservice", "dual_tech", "dual_admin_e1", "limited")}
+FIX = {k: os.environ.get(k) for k in ("E1", "E2", "DUAL_ID", "P_TECH", "P_ADMIN", "P_SELF")}
 DB_CLI = os.environ.get("DB_CLI")
 VERBOSE = "-v" in sys.argv
 PATTERN = sys.argv[sys.argv.index("-k") + 1] if "-k" in sys.argv else None
@@ -528,6 +528,107 @@ def annulation_conflit_apparu_apres_l_apercu():
     assert ok(TOK["admin"], "glpi_search", {"itemtype": "Location", "query": PREFIX + " conflit tardif"})["renvoyés"] == 1, "modification du technicien écrasée"
     if DB_CLI:
         assert db_count(f"SELECT COUNT(*) FROM glpi_locations WHERE id={lid} AND comment LIKE 'modifié pendant%'") == 1
+
+
+def token_id(plain):
+    return int(db(f"SELECT id FROM glpi_plugin_glpimcp_tokens WHERE token_hash=SHA2('{plain}', 256)")[0][0])
+
+
+def set_plugin_config(name, value):
+    db(f"UPDATE glpi_configs SET value='{value}' WHERE context='plugin:glpimcp' AND name='{name}'")
+
+
+@test
+def garde_fou_debit_429_puis_suspension():
+    need("limited")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    tid = token_id(TOK["limited"])
+    old = db("SELECT value FROM glpi_configs WHERE context='plugin:glpimcp' AND name='rl_suspend_after'")[0][0]
+    db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_requests_per_minute=4, is_active=1, date_suspended=NULL WHERE id={tid}")
+    db(f"DELETE FROM glpi_plugin_glpimcp_counters WHERE k IN ('req:t{tid}', 'rej:t{tid}')")
+    set_plugin_config("rl_suspend_after", 3)
+    try:
+        codes = [rpc(TOK["limited"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True) for _ in range(5)]
+        status = [r.status_code for r in codes]
+        assert status[:4] == [200] * 4 and status[4] == 429, status
+        assert int(codes[4].headers.get("Retry-After", "0")) > 0, "Retry-After absent"
+        for _ in range(3):
+            rpc(TOK["limited"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        after = rpc(TOK["limited"], "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        assert after.status_code == 401, f"jeton non suspendu après des refus répétés : {after.status_code}"
+        row = db(f"SELECT is_active, suspended_reason IS NOT NULL FROM glpi_plugin_glpimcp_tokens WHERE id={tid}")[0]
+        assert row == ["0", "1"], row
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE tokens_id={tid} AND status='suspendu'") >= 1
+        assert db_count("SELECT COUNT(*) FROM glpi_queuednotifications WHERE name LIKE '[GLPI MCP] Jeton suspendu%'") >= 1, "alerte non mise en file"
+    finally:
+        set_plugin_config("rl_suspend_after", old)
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_requests_per_minute=NULL, is_active=1, date_suspended=NULL, suspended_reason=NULL WHERE id={tid}")
+        db(f"DELETE FROM glpi_plugin_glpimcp_counters WHERE k IN ('req:t{tid}', 'rej:t{tid}')")
+
+
+@test
+def garde_fou_quota_de_tickets():
+    need("limited")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    tid = token_id(TOK["limited"])
+    uid = db(f"SELECT users_id FROM glpi_plugin_glpimcp_tokens WHERE id={tid}")[0][0]
+    db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_tickets_per_hour=2 WHERE id={tid}")
+    db(f"DELETE FROM glpi_plugin_glpimcp_counters WHERE k='tk:u{uid}'")
+    try:
+        for i in range(2):
+            propose_confirm(TOK["limited"], "glpi_ticket_create", {"title": f"{PREFIX} quota {i}", "description": "test de quota"})
+        refused(TOK["limited"], "glpi_ticket_create", {"title": f"{PREFIX} quota 3", "description": "test de quota"}, contains="Quota")
+        assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE name LIKE '{PREFIX} quota%'") == 2
+    finally:
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET rl_tickets_per_hour=NULL WHERE id={tid}")
+        db(f"DELETE FROM glpi_plugin_glpimcp_counters WHERE k='tk:u{uid}'")
+
+
+def oauth_code_flow(session, client_id, redirect_uri):
+    v = secrets.token_urlsafe(48)
+    ch = base64.urlsafe_b64encode(hashlib.sha256(v.encode()).digest()).rstrip(b"=").decode()
+    params = {"response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri, "code_challenge": ch,
+              "code_challenge_method": "S256", "state": "xyz", "scope": "glpi", "resource": MCP_URL}
+    r = session.get(BASE + "/plugins/glpimcp/oauth/authorize?" + up.urlencode(params), allow_redirects=False, timeout=30)
+    return r, v
+
+
+@test
+def client_gere_profil_impose_sans_page_de_consentement():
+    need_fixtures()
+    if not (DB_CLI and FIX.get("P_SELF") and os.environ.get("SELF_LOGIN")):
+        raise Skip("DB_CLI, P_SELF ou SELF_LOGIN/SELF_PASSWORD absents")
+    cid = "gmcpc_e2e_managed_" + STAMP
+    redirect = "https://copilot.example.test/redirect"
+    db(f"INSERT INTO glpi_plugin_glpimcp_oauthclients (client_id, name, redirect_uris, origin, is_active, managed, forced_profiles_id, skip_consent, token_days, date_creation) "
+       f"VALUES ('{cid}', 'Copilot E2E', '[\"{redirect}\"]', 'dcr', 1, 1, {FIX['P_SELF']}, 1, 30, NOW())")
+    try:
+        # Compte self-service connecté (SSO simulé par la connexion GLPI) : code délivré sans page à cliquer
+        s = glpi_session(os.environ["SELF_LOGIN"], os.environ["SELF_PASSWORD"])
+        r, verifier = oauth_code_flow(s, cid, redirect)
+        assert r.status_code in (302, 303) and r.headers["Location"].startswith(redirect), (r.status_code, r.text[:300])
+        code = up.parse_qs(up.urlparse(r.headers["Location"]).query)["code"][0]
+        tok = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+                            "client_id": cid, "code_verifier": verifier}, timeout=30).json()["access_token"]
+        w = ok(tok, "glpi_whoami")
+        assert w["profil_actif"]["id"] == int(FIX["P_SELF"]), w["profil_actif"]
+        r2 = rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True, headers={"X-GLPI-Profile": FIX["P_TECH"]})
+        assert r2.status_code == 403
+        # Compte sans le profil imposé : refusé
+        if os.environ.get("DUAL_LOGIN"):
+            r3, _ = oauth_code_flow(glpi_session(os.environ["DUAL_LOGIN"], os.environ["DUAL_PASSWORD"]), cid, redirect)
+            assert r3.status_code == 403, f"compte sans le profil imposé accepté : {r3.status_code}"
+        # Restriction d'adresse IP du client
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET allowed_ips='203.0.113.0/24' WHERE client_id='{cid}'")
+        r4 = rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        assert r4.status_code == 403 and "IP" in r4.json()["error"]["message"], r4.text[:200]
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET allowed_ips='127.0.0.1, ::1' WHERE client_id='{cid}'")
+        assert rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code == 200
+    finally:
+        db(f"UPDATE glpi_plugin_glpimcp_tokens t JOIN glpi_plugin_glpimcp_oauthclients c ON c.id=t.oauthclients_id SET t.is_active=0 WHERE c.client_id='{cid}'")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE client_id='{cid}'")
 
 
 @test
