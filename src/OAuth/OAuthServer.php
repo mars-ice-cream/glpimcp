@@ -343,7 +343,7 @@ final class OAuthServer
         ];
     }
 
-    public static function issueCode(array $req, int $users_id, int $profiles_id, int $days): string
+    public static function issueCode(array $req, int $users_id, int $profiles_id, int $days, bool $implicit = false): string
     {
         global $DB;
 
@@ -361,6 +361,7 @@ final class OAuthServer
             'redirect_uri'    => $req['redirect_uri'],
             'code_challenge'  => $req['code_challenge'],
             'days'            => max(1, min(365, $days)),
+            'grant_mode'      => $implicit ? 'implicit' : 'consent',
             'date_expiration' => date('Y-m-d H:i:s', time() + 120),
         ]);
         return $code;
@@ -413,9 +414,9 @@ final class OAuthServer
             if (isset($req['redirect_uri']) && $req['redirect_uri'] !== $code['redirect_uri']) {
                 throw new OAuthException('invalid_grant', 'redirect_uri différent de la demande d\'autorisation.');
             }
-            // Politique actuelle du client : un code émis avant un changement de profil imposé est refusé
-            if (ClientPolicy::isManaged($client) && (int) $code['profiles_id'] !== (int) $client['forced_profiles_id']) {
-                throw new OAuthException('invalid_grant', 'Autorisation obsolète (politique du client modifiée) : reconnectez-vous.');
+            // Politique actuelle du client : un code émis sous une politique retirée depuis est refusé
+            if (($why = ClientPolicy::grantViolation($client, $code + ['date_creation' => date('Y-m-d H:i:s')])) !== null) {
+                throw new OAuthException('invalid_grant', 'Autorisation obsolète (' . $why . ') : reconnectez-vous.');
             }
             $verifier = (string) ($req['code_verifier'] ?? '');
             $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
@@ -433,6 +434,7 @@ final class OAuthServer
                 'refresh_hash'       => hash('sha256', $refresh),
                 'token_hint'         => 'OAuth',
                 'profiles_id'        => (int) $code['profiles_id'],
+                'grant_mode'         => ($code['grant_mode'] ?? 'consent') === 'implicit' ? 'implicit' : 'consent',
                 'entities_id'        => null,
                 'is_recursive'       => 1,
                 'is_active'          => 1,
@@ -456,6 +458,11 @@ final class OAuthServer
             $row = $it->current();
             if (!empty($row['refresh_expiration']) && strtotime((string) $row['refresh_expiration']) < time()) {
                 throw new OAuthException('invalid_grant', 'Autorisation expirée : reconnectez le connecteur.');
+            }
+            // L'accès doit toujours respecter la politique actuelle du client (statut géré, consentement, profil, durée)
+            if (($why = ClientPolicy::grantViolation($client, $row)) !== null) {
+                $DB->update(Token::getTable(), ['is_active' => 0], ['id' => $row['id']]);
+                throw new OAuthException('invalid_grant', 'Autorisation révoquée (' . $why . ') : reconnectez le connecteur.');
             }
             // Rotation : l'ancien couple devient inutilisable
             [$access, $refresh] = [Token::PREFIX . bin2hex(random_bytes(24)), 'gmcpr_' . bin2hex(random_bytes(24))];

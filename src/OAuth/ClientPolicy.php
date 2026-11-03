@@ -37,6 +37,42 @@ final class ClientPolicy
         return in_array($pid, array_map('intval', Profile_User::getUserProfiles($users_id)), true) ? $pid : null;
     }
 
+    /** Le client accorde-t-il actuellement l'accès sans page de consentement ? */
+    public static function grantsImplicitly(array $client): bool
+    {
+        return self::isManaged($client) && !empty($client['skip_consent']);
+    }
+
+    /**
+     * Un accès OAuth déjà accordé respecte-t-il la politique ACTUELLE du client ?
+     * Renvoie la raison du refus, ou null. Vérifié à chaque requête MCP, à chaque rafraîchissement et à
+     * l'échange d'un code : retirer le statut « géré », le consentement implicite, changer le profil imposé
+     * ou raccourcir la durée coupe les accès qui ne la respectent plus, sans attendre leur expiration.
+     *
+     * @param array $grant ligne de jeton (ou de code) : profiles_id, grant_mode, date_creation
+     */
+    public static function grantViolation(array $client, array $grant, ?int $now = null): ?string
+    {
+        $now ??= time();
+        if (empty($client['is_active'])) {
+            return 'client IA désactivé par l\'administrateur';
+        }
+        if (($grant['grant_mode'] ?? 'consent') === 'implicit' && !self::grantsImplicitly($client)) {
+            return 'accès accordé sans consentement, mode retiré depuis par l\'administrateur';
+        }
+        if (self::isManaged($client) && (int) ($grant['profiles_id'] ?? 0) !== (int) ($client['forced_profiles_id'] ?? 0)) {
+            return 'profil imposé par l\'administrateur différent de celui de l\'accès';
+        }
+        $days = (int) ($client['token_days'] ?? 0);
+        if (
+            self::isManaged($client) && $days > 0 && !empty($grant['date_creation'])
+            && strtotime((string) $grant['date_creation']) + $days * 86400 < $now
+        ) {
+            return 'durée d\'accès fixée par l\'administrateur dépassée';
+        }
+        return null;
+    }
+
     /** IP du client : REMOTE_ADDR, ou X-Forwarded-For seulement derrière un proxy déclaré de confiance */
     public static function clientIp(Request $request): string
     {

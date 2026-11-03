@@ -659,6 +659,80 @@ def client_gere_profil_impose_sans_page_de_consentement():
         db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE client_id='{cid}'")
 
 
+def managed_grant(s, cid, redirect):
+    """Accès obtenu par le flux géré sans consentement : (access_token, refresh_token)."""
+    r, verifier = oauth_code_flow(s, cid, redirect)
+    assert r.status_code in (302, 303) and r.headers["Location"].startswith(redirect), (r.status_code, r.text[:300])
+    code = up.parse_qs(up.urlparse(r.headers["Location"]).query)["code"][0]
+    t = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+                      "client_id": cid, "code_verifier": verifier}, timeout=30).json()
+    return t["access_token"], t["refresh_token"]
+
+
+def refresh(cid, rt):
+    return requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt, "client_id": cid}, timeout=30)
+
+
+@test
+def statut_gere_retire_accès_implicites_coupés():
+    """L'admin retire le statut « géré » (ou le consentement implicite) : les accès accordés sans page de
+    consentement sont coupés tout de suite — requêtes MCP, rafraîchissement et codes en attente."""
+    need_fixtures()
+    if not (DB_CLI and FIX.get("P_SELF") and os.environ.get("SELF_LOGIN")):
+        raise Skip("DB_CLI, P_SELF ou SELF_LOGIN/SELF_PASSWORD absents")
+    cid = "gmcpc_e2e_unmanage_" + STAMP
+    redirect = "https://copilot.example.test/redirect"
+    db(f"INSERT INTO glpi_plugin_glpimcp_oauthclients (client_id, name, redirect_uris, origin, is_active, managed, forced_profiles_id, skip_consent, token_days, date_creation) "
+       f"VALUES ('{cid}', 'Copilot E2E retrait', '[\"{redirect}\"]', 'dcr', 1, 1, {FIX['P_SELF']}, 1, 30, NOW())")
+    pk = int(db(f"SELECT id FROM glpi_plugin_glpimcp_oauthclients WHERE client_id='{cid}'")[0][0])
+    form = lambda **kw: {"id": pk, "client_policy": "1", "forced_profiles_id": FIX["P_SELF"], "token_days": 30, **kw}
+    try:
+        s = glpi_session(os.environ["SELF_LOGIN"], os.environ["SELF_PASSWORD"])
+        # 1. Rafraîchissement normal tant que la politique ne change pas
+        at, rt = managed_grant(s, cid, redirect)
+        assert db(f"SELECT grant_mode FROM glpi_plugin_glpimcp_tokens WHERE oauthclients_id={pk} AND is_active=1")[0][0] == "implicit"
+        r = refresh(cid, rt)
+        assert r.status_code == 200, r.text[:200]
+        at, rt = r.json()["access_token"], r.json()["refresh_token"]
+        # Un code délivré avant le changement, pas encore échangé
+        r5, v5 = oauth_code_flow(s, cid, redirect)
+        code5 = up.parse_qs(up.urlparse(r5.headers["Location"]).query)["code"][0]
+
+        # 2. L'administrateur retire le statut « géré » (même profil) par l'interface
+        admin_post("/plugins/glpimcp/front/config.form.php", form())  # managed et skip_consent décochés
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_tokens WHERE oauthclients_id={pk} AND is_active=1") == 0, "accès implicite encore actif"
+        r = rpc(at, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        assert r.status_code in (401, 403), f"jeton d'accès encore accepté : {r.status_code}"
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        bad = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code5, "redirect_uri": redirect,
+                            "client_id": cid, "code_verifier": v5}, timeout=30)
+        assert bad.status_code == 400 and bad.json()["error"] == "invalid_grant", bad.text[:200]
+        # Le client redevient « personnel » : page de consentement, plus d'accès silencieux
+        r6, _ = oauth_code_flow(s, cid, redirect)
+        assert r6.status_code == 200 and "decision" in r6.text, f"accès accordé sans consentement : {r6.status_code}"
+
+        # 3. Même chose sans passer par l'interface (modification directe) : refus à l'usage et au rafraîchissement
+        admin_post("/plugins/glpimcp/front/config.form.php", form(managed="1", skip_consent="1"))
+        at, rt = managed_grant(s, cid, redirect)
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET skip_consent=0 WHERE id={pk}")
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        assert rpc(at, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code in (401, 403)
+
+        # 4. Durée raccourcie par l'administrateur : un accès plus ancien n'est plus rafraîchi
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET skip_consent=1 WHERE id={pk}")
+        at, rt = managed_grant(s, cid, redirect)
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET date_creation=NOW() - INTERVAL 10 DAY WHERE oauthclients_id={pk} AND is_active=1")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET token_days=7 WHERE id={pk}")
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE summary LIKE '%Copilot E2E retrait%'") >= 1, "changement de politique non journalisé"
+    finally:
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET is_active=0 WHERE oauthclients_id={pk}")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE id={pk}")
+
+
 @test
 def interrupteurs_par_type_d_action():
     need("admin")

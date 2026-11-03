@@ -117,5 +117,16 @@ check('liste : toujours disponible', Permissions::decideTool('glpi_cancel_action
 check('liste n\'outrepasse pas l\'interdiction', Permissions::decideTool('glpi_search_items', ['glpi_search_items'], $list, $on), false);
 check('noms d\'outils filtrés', Permissions::cleanTools(['glpi_ok', 'rm -rf', 3, 'glpi_ok']), ['glpi_ok']);
 
+echo "Accès OAuth et politique actuelle du client\n";
+$managed = ['is_active' => 1, 'managed' => 1, 'skip_consent' => 1, 'forced_profiles_id' => 1, 'token_days' => 30];
+$implicit = ['grant_mode' => 'implicit', 'profiles_id' => 1, 'date_creation' => date('Y-m-d H:i:s')];
+check('accès implicite conforme', CP::grantViolation($managed, $implicit), null);
+check('statut géré retiré', CP::grantViolation(['managed' => 0, 'skip_consent' => 0] + $managed, $implicit) !== null, true);
+check('consentement implicite retiré', CP::grantViolation(['skip_consent' => 0] + $managed, $implicit) !== null, true);
+check('accès consenti survit au retrait', CP::grantViolation(['managed' => 0, 'skip_consent' => 0] + $managed, ['grant_mode' => 'consent'] + $implicit), null);
+check('profil imposé changé', CP::grantViolation(['forced_profiles_id' => 2] + $managed, $implicit) !== null, true);
+check('durée raccourcie', CP::grantViolation(['token_days' => 7] + $managed, ['date_creation' => date('Y-m-d H:i:s', time() - 10 * 86400)] + $implicit) !== null, true);
+check('client désactivé', CP::grantViolation(['is_active' => 0] + $managed, $implicit) !== null, true);
+
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);
