@@ -669,6 +669,74 @@ def interrupteurs_par_type_d_action():
     refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Group", "fields": {"name": PREFIX + " groupe"}}]}, contains="désactivée")
 
 
+def tool_names(token):
+    return {t["name"] for t in rpc(token, "tools/list")["tools"]}
+
+
+def unavailable(token, name, args=None):
+    try:
+        rpc(token, "tools/call", {"name": name, "arguments": args or {}})
+    except AssertionError as e:
+        assert "Unknown tool" in str(e), e
+        return
+    raise AssertionError(f"{name} aurait dû être indisponible")
+
+
+def admin_post(path, data):
+    s = glpi_session()
+    page = s.get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
+    csrf = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)[-1]
+    r = s.post(BASE + path, data={"_glpi_csrf_token": csrf, **data}, timeout=30)
+    assert r.status_code < 400, (r.status_code, r.text[:300])
+    return s, page
+
+
+@test
+def outils_interdits_et_politique_par_profil():
+    need("admin", "selfservice")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    ss_profile = int(db(f"SELECT profiles_id FROM glpi_plugin_glpimcp_tokens WHERE id={token_id(TOK['selfservice'])}")[0][0])
+    base = tool_names(TOK["selfservice"])
+    assert "glpi_ticket_create" in base and "glpi_kb_search" in base, sorted(base)
+    try:
+        # Menu Administration > Assistant IA, puis interdiction globale d'un outil (interface, CSRF)
+        s, page = admin_post("/plugins/glpimcp/front/config.form.php", {"banned[]": ["glpi_kb_search", "glpi_whoami"], "update_banned": "1"})
+        assert "glpimcp/front/config.form.php" in s.get(BASE + "/front/central.php", timeout=30).text, "entrée de menu absente"
+        assert "glpi_kb_search" not in tool_names(TOK["selfservice"])
+        assert "glpi_kb_search" not in tool_names(TOK["admin"]), "interdiction globale non appliquée à l'admin"
+        assert "glpi_whoami" in tool_names(TOK["admin"]), "outil toujours disponible interdit"
+        unavailable(TOK["admin"], "glpi_kb_search", {"query": "x"})
+
+        # Aperçu préparé avant la restriction du profil : la confirmation doit être refusée après
+        p = ok(TOK["selfservice"], "glpi_ticket_create", {"title": PREFIX + " politique profil", "description": "test"})
+        pending = p.get("confirmation_id")
+
+        # Profil Self-Service : type « Assistance » retiré, outils tous cochés
+        cats = [c for c in ("form_submit", "items", "projects", "delete", "forms_design", "rules", "software", "rollback")]
+        admin_post("/plugins/glpimcp/front/profilepolicy.form.php", {"profiles_id": ss_profile, "save": "1", "tools[]": sorted(base), "categories[]": cats})
+        assert "tickets" in db(f"SELECT denied_categories FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}")[0][0]
+        now = tool_names(TOK["selfservice"])
+        assert "glpi_ticket_create" not in now and "glpi_ticket_add_followup" not in now, sorted(now)
+        assert "glpi_ticket_create" in tool_names(TOK["admin"]), "la politique d'un profil a touché un autre profil"
+        assert "Assistance" in ok(TOK["selfservice"], "glpi_whoami")["types_d_actions_désactivés_par_l_admin"]
+        if pending:
+            refused(TOK["selfservice"], "glpi_confirm_action", {"confirmation_id": pending}, contains="plus autorisé")
+
+        # Liste restreinte : seuls les outils cochés (+ toujours disponibles)
+        admin_post("/plugins/glpimcp/front/profilepolicy.form.php", {"profiles_id": ss_profile, "save": "1", "tools[]": ["glpi_search"], "categories[]": cats + ["tickets"]})
+        now = tool_names(TOK["selfservice"])
+        assert now <= {"glpi_search", "glpi_whoami", "glpi_list_pending_actions", "glpi_cancel_action"}, sorted(now)
+        assert "glpi_search" in now
+        unavailable(TOK["selfservice"], "glpi_get_item", {"itemtype": "Ticket", "id": 1})
+        assert db_count("SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE summary LIKE 'Assistant IA : politique du profil%'") >= 2, "modification non journalisée"
+    finally:
+        admin_post("/plugins/glpimcp/front/profilepolicy.form.php", {"profiles_id": ss_profile, "clear": "1"})
+        admin_post("/plugins/glpimcp/front/config.form.php", {"update_banned": "1"})
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}") == 0
+    assert tool_names(TOK["selfservice"]) == base, "restrictions non levées"
+
+
 @test
 def moteur_formulaire_titre_et_destination_conditionnelle():
     need("admin")

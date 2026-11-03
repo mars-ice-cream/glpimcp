@@ -13,7 +13,7 @@ use Glpi\Http\SessionManager;
 use Glpi\Plugin\Hooks;
 use GlpiPlugin\Glpimcp\Token;
 
-define('PLUGIN_GLPIMCP_VERSION', '1.5.0');
+define('PLUGIN_GLPIMCP_VERSION', '1.6.0');
 define('PLUGIN_GLPIMCP_MIN_GLPI', '11.0.0');
 define('PLUGIN_GLPIMCP_MAX_GLPI', '11.99.99');
 
@@ -72,7 +72,12 @@ function plugin_init_glpimcp(): void
     // Onglet « Assistant IA (MCP) » dans les préférences et la fiche utilisateur
     Plugin::registerClass(Token::class, ['addtabon' => ['Preference', 'User']]);
 
+    // Onglet « Assistant IA (MCP) » sur la fiche profil : outils et types d'action par profil
+    Plugin::registerClass(\GlpiPlugin\Glpimcp\ProfilePolicy::class, ['addtabon' => ['Profile']]);
+
     if (Session::haveRight('config', UPDATE)) {
         $PLUGIN_HOOKS[Hooks::CONFIG_PAGE]['glpimcp'] = 'front/config.form.php';
+        // Administration > Assistant IA (MCP)
+        $PLUGIN_HOOKS[Hooks::MENU_TOADD]['glpimcp'] = ['admin' => \GlpiPlugin\Glpimcp\Menu::class];
     }
 }

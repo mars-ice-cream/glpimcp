@@ -162,6 +162,10 @@ final class PendingActions
                 RateLimiter::checkWrite($ctx, $ops, false);
             }
             // Réglages et droits revérifiés maintenant (ils ont pu changer depuis l'aperçu)
+            if (str_starts_with($tool, 'glpi_') && !Permissions::toolAllowed($tool)) {
+                throw new ToolException('L\'outil « ' . $tool . ' » qui a préparé cette action n\'est plus autorisé ('
+                    . Permissions::toolBlockReason($tool) . '). Rien n\'a été modifié.');
+            }
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
             if (!hash_equals((string) $row['preview_hash'], self::previewHash($check['preview'], Operations::basis($ops)))) {

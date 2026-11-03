@@ -38,8 +38,10 @@ final class RateLimiter
         $k = $DB->escape(mb_substr($key, 0, 100));
         $exp = ($win + 1) * $window;
         $table = self::TABLE;
-        $DB->doQuery("INSERT IGNORE INTO `{$table}` (`k`, `win`, `n`, `exp`) VALUES ('{$k}', {$win}, 0, {$exp})");
-        $DB->doQuery("UPDATE `{$table}` SET `n` = LAST_INSERT_ID(GREATEST(0, CAST(`n` AS SIGNED) + ({$by}))) WHERE `k` = '{$k}' AND `win` = {$win}");
+        $by = (int) $by;
+        // Une seule requête atomique, sans avertissement SQL (INSERT IGNORE en produisait un par appel dans les journaux GLPI)
+        $DB->doQuery("INSERT INTO `{$table}` (`k`, `win`, `n`, `exp`) VALUES ('{$k}', {$win}, LAST_INSERT_ID(GREATEST(0, {$by})), {$exp})"
+            . " ON DUPLICATE KEY UPDATE `n` = LAST_INSERT_ID(GREATEST(0, CAST(`n` AS SIGNED) + ({$by})))");
         $value = (int) ($DB->doQuery('SELECT LAST_INSERT_ID() AS v')->fetch_assoc()['v'] ?? 0);
         if (random_int(1, 200) === 1) {
             $DB->delete($table, ['exp' => ['<', time() - 60]]);

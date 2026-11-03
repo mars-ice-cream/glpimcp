@@ -219,6 +219,20 @@ function plugin_glpimcp_install(): bool
         ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
     }
 
+    // 1.6.0 : politique de l'assistant IA par profil GLPI (outils autorisés, types d'action retirés)
+    if (!$DB->tableExists('glpi_plugin_glpimcp_profilepolicies')) {
+        $DB->doQuery("CREATE TABLE `glpi_plugin_glpimcp_profilepolicies` (
+            `id` int {$sign} NOT NULL AUTO_INCREMENT,
+            `profiles_id` int {$sign} NOT NULL DEFAULT '0',
+            `tools_mode` varchar(10) NOT NULL DEFAULT 'all',
+            `tools` text,
+            `denied_categories` text,
+            `date_mod` timestamp NULL DEFAULT NULL,
+            PRIMARY KEY (`id`),
+            UNIQUE KEY `profiles_id` (`profiles_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
+    }
+
     $keep = static fn(string $k, mixed $default) => Config::getConfigurationValues('plugin:glpimcp', [$k])[$k] ?? $default;
     Config::setConfigurationValues('plugin:glpimcp', [
         'rl_requests_per_minute' => $keep('rl_requests_per_minute', 600),
@@ -227,6 +241,7 @@ function plugin_glpimcp_install(): bool
         'rl_suspend_after'       => $keep('rl_suspend_after', 50),
         'alert_emails'           => $keep('alert_emails', ''),
         'trusted_proxies'        => $keep('trusted_proxies', ''),
+        'banned_tools'           => $keep('banned_tools', '[]'),
     ]);
 
     Config::setConfigurationValues('plugin:glpimcp', [
@@ -259,7 +274,7 @@ function plugin_glpimcp_uninstall(): bool
 {
     global $DB;
 
-    foreach (['glpi_plugin_glpimcp_tokens', 'glpi_plugin_glpimcp_pendingactions', 'glpi_plugin_glpimcp_logs', 'glpi_plugin_glpimcp_oauthclients', 'glpi_plugin_glpimcp_oauthcodes', 'glpi_plugin_glpimcp_counters'] as $table) {
+    foreach (['glpi_plugin_glpimcp_tokens', 'glpi_plugin_glpimcp_pendingactions', 'glpi_plugin_glpimcp_logs', 'glpi_plugin_glpimcp_oauthclients', 'glpi_plugin_glpimcp_oauthcodes', 'glpi_plugin_glpimcp_counters', 'glpi_plugin_glpimcp_profilepolicies'] as $table) {
         if ($DB->tableExists($table)) {
             $DB->doQuery("DROP TABLE `$table`");
         }

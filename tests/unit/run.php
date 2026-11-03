@@ -102,5 +102,20 @@ check('ticket + suivi', RateLimiter::ticketsIn([['op' => 'add', 'itemtype' => 'T
 check('formulaire', RateLimiter::ticketsIn([['op' => 'form_submit']]), 1);
 check('modification', RateLimiter::ticketsIn([['op' => 'update', 'itemtype' => 'Ticket']]), 0);
 
+echo "Outils : interdits, par profil\n";
+$on = fn($c) => true;
+$no_tickets = fn($c) => $c !== 'tickets';
+check('sans restriction', Permissions::decideTool('glpi_ticket_create', [], null, $on), true);
+check('interdit partout', Permissions::decideTool('glpi_ticket_create', ['glpi_ticket_create'], null, $on), false);
+check('toujours disponible malgré interdiction', Permissions::decideTool('glpi_whoami', ['glpi_whoami'], null, $on), true);
+check('type d\'action retiré', Permissions::decideTool('glpi_ticket_create', [], null, $no_tickets), false);
+$list = Permissions::normalizePolicy(['tools_mode' => 'list', 'tools' => '["glpi_search_items","glpi_ticket_create"]', 'denied_categories' => '["tickets","inconnu"]']);
+check('politique nettoyée', $list['denied_categories'], ['tickets']);
+check('liste : outil coché', Permissions::decideTool('glpi_search_items', [], $list, $on), true);
+check('liste : outil non coché', Permissions::decideTool('glpi_get_item', [], $list, $on), false);
+check('liste : toujours disponible', Permissions::decideTool('glpi_cancel_action', [], $list, $on), true);
+check('liste n\'outrepasse pas l\'interdiction', Permissions::decideTool('glpi_search_items', ['glpi_search_items'], $list, $on), false);
+check('noms d\'outils filtrés', Permissions::cleanTools(['glpi_ok', 'rm -rf', 3, 'glpi_ok']), ['glpi_ok']);
+
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);

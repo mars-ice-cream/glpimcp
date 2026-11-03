@@ -178,7 +178,7 @@ Prérequis : GLPI 11.0 → 11.9, PHP ≥ 8.2.
 
 ```bash
 cd /var/www/glpi/plugins            # ou marketplace/
-unzip glpimcp-1.5.0.zip             # crée le dossier glpimcp/
+unzip glpimcp-1.6.0.zip             # crée le dossier glpimcp/
 chown -R www-data:www-data glpimcp
 php /var/www/glpi/bin/console plugin:install glpimcp --username=glpi
 php /var/www/glpi/bin/console plugin:activate glpimcp
@@ -193,7 +193,11 @@ afficher l'adresse du serveur MCP : `https://votre-glpi/plugins/glpimcp/mcp`.
 > Avec Apache + PHP-FPM, ajouter si besoin :
 > `SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1`
 
-### Réglages (Configuration > Plugins > GLPI MCP)
+### Réglages (Administration > Assistant IA (MCP))
+
+Accessible aussi par *Configuration > Plugins > GLPI MCP*. Réservé aux comptes ayant le droit de modifier
+la configuration de GLPI.
+
 
 - **Confirmation** : toutes les écritures (recommandé) ou seulement les sensibles ; en mode
   « sensibles », les écritures ordinaires sont exécutées sans aperçu préalable.
@@ -211,6 +215,18 @@ afficher l'adresse du serveur MCP : `https://votre-glpi/plugins/glpimcp/mcp`.
   Pour un premier paramétrage complet (création de comptes, réglages e-mail…), activer
   temporairement « Utilisateurs et groupes » et « Configuration générale ». Chaque changement
   de ces interrupteurs est inscrit au journal IA.
+- **Outils interdits pour tout le monde** : un outil coché est masqué pour tous les assistants et
+  refusé, quel que soit le profil. Passe avant tout le reste.
+- **Restrictions par profil** : sur chaque fiche profil (*Administration > Profils*), un onglet
+  *Assistant IA (MCP)* permet de décocher les outils que ce profil ne doit pas utiliser et de lui retirer
+  des types d'action (y compris par les outils génériques de création et de modification). Exemple :
+  un profil Self-Service limité à la recherche, aux tickets et à la base de connaissances.
+
+  Ces trois couches (outils interdits, types d'action globaux, politique du profil) ne font que
+  restreindre : les droits GLPI du compte s'appliquent toujours. Trois outils restent toujours
+  disponibles (qui suis-je, actions en attente, annuler une action en attente). Tout est revérifié au
+  moment de la confirmation : une action préparée avec un outil retiré depuis est refusée. Chaque
+  modification est inscrite au journal IA.
 - Liste des jetons actifs (révocation) et journal des actions avec annulation.
 
 Chaque utilisateur retrouve aussi ses propres actions IA dans *Mes préférences > Assistant IA (MCP)*.
@@ -317,6 +333,16 @@ le compte GLPI ; toutes passent par les mêmes garde-fous (aperçu, approbation,
 | **Individuel** | techniciens, administrateurs, scripts | jeton personnel, ou OAuth avec choix du profil | il génère son jeton ou clique *Autoriser* en choisissant son profil |
 | **Assistant de l'entreprise** (Copilot, Claude Team/Enterprise, ChatGPT Enterprise…) | tous les salariés | OAuth + client IA **géré** par l'administrateur, SSO de GLPI | la 1re fois, *Se connecter* ; avec le SSO AD, aucun mot de passe ni page de consentement |
 | **Relais** (Dokore…) | outils qui ajoutent leurs propres fonctions | OAuth via un serveur relais autorisé | comme l'assistant qui passe par le relais |
+
+Selon l'annuaire de l'entreprise :
+
+- **SSO (AD / Entra) branché sur GLPI** : connexion transparente, aucun mot de passe à taper.
+- **Pas de SSO, comptes GLPI locaux ou LDAP** : le salarié tape son identifiant GLPI une seule fois ;
+  l'accès dure ensuite le temps choisi pour le client IA (jusqu'à 365 jours). Aucun compte global.
+- **Salariés sans compte GLPI** : non pris en charge volontairement. Déposer des tickets au nom d'une
+  adresse e-mail non vérifiée permettrait d'usurper n'importe qui (« de la part du directeur ») et de
+  faire envoyer des notifications vers n'importe quelle adresse. Ces salariés passent par les canaux
+  habituels de GLPI (collecteur de mails, formulaires).
 
 ### Assistant de l'entreprise : exemple avec Microsoft Copilot (Copilot Studio)
 
