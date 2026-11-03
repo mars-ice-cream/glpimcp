@@ -1,6 +1,13 @@
 # Changelog
 
 ## 1.6.0 — 2026-11-03
+- **Compatibilité GLPI 12** (11.x et 12.x) : CSRF par en-têtes avec GLPI 12, API retirées remplacées,
+  propriétés typées ; ré-authentification de GLPI 12 exigée pour approuver une action critique et pour
+  modifier les réglages de l'assistant ; le point d'entrée MCP (jeton) en est exempté comme l'API de GLPI.
+  CI : tests de bout en bout et analyse statique sur GLPI 11.0.12 et 12.0.1.
+- **Interface en français et en anglais** selon la langue du compte : administration, onglets, approbation,
+  titres des outils, types d'action, aperçus, statuts et résumés du journal ; alertes e-mail bilingues.
+- Onglet du profil : seuls les outils accessibles avec les droits GLPI du profil sont proposés.
 - **Menu Administration > Assistant IA (MCP)** : la page de réglages n'est plus cachée dans Configuration > Plugins.
 - **Outils interdits pour tout le monde** : masqués et refusés quel que soit le profil.
 - **Restrictions par profil** : onglet *Assistant IA (MCP)* sur la fiche profil — outils autorisés et types

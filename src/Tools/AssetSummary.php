@@ -21,7 +21,7 @@ class AssetSummary extends Tool
 
     public function title(): string
     {
-        return 'Vue d\'ensemble du parc';
+        return __('Asset overview', 'glpimcp');
     }
 
     public function description(): string

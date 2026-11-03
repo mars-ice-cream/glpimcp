@@ -21,7 +21,7 @@ class UpdateItem extends Tool
 
     public function title(): string
     {
-        return 'Modifier un ou plusieurs objets';
+        return __('Update one or more items', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -72,7 +72,7 @@ class UpdateItem extends Tool
                 'input'    => $fields,
             ];
         }
-        $summary = (string) ($args['summary'] ?? sprintf('Modification de %d objet(s)', count($ops)));
+        $summary = (string) ($args['summary'] ?? sprintf(__('Update of %d item(s)', 'glpimcp'), count($ops)));
         return PendingActions::propose($ctx, $this->name(), $summary, $ops);
     }
 }

@@ -80,7 +80,7 @@ final class Operations
                         }
                         $preview[] = [
                             'n'        => $n,
-                            'action'   => 'créer',
+                            'action'   => __('create', 'glpimcp'),
                             'type'     => Items::typeLabel($item),
                             'itemtype' => $item::class,
                             'ref'      => $op['ref'] ?? null,
@@ -116,7 +116,7 @@ final class Operations
                         }
                         $preview[] = [
                             'n'       => $n,
-                            'action'  => 'modifier',
+                            'action'  => __('update', 'glpimcp'),
                             'type'    => Items::typeLabel($item),
                             'objet'   => self::display($item),
                             'changements' => $changes,
@@ -130,7 +130,7 @@ final class Operations
                         self::guardTarget($item);
                         $preview[] = [
                             'n'      => $n,
-                            'action' => $item instanceof \CommonDBRelation ? 'retirer le lien' : ($purge ? 'SUPPRIMER DÉFINITIVEMENT' : 'mettre à la corbeille'),
+                            'action' => $item instanceof \CommonDBRelation ? __('remove the link', 'glpimcp') : ($purge ? __('DELETE PERMANENTLY', 'glpimcp') : __('move to the trash', 'glpimcp')),
                             'type'   => Items::typeLabel($item),
                             'objet'  => self::display($item),
                         ];
@@ -139,7 +139,7 @@ final class Operations
 
                     case 'restore':
                         $item = Items::load($op['itemtype'], (int) $op['id'], DELETE);
-                        $preview[] = ['n' => $n, 'action' => 'restaurer depuis la corbeille', 'type' => Items::typeLabel($item), 'objet' => self::display($item)];
+                        $preview[] = ['n' => $n, 'action' => __('restore from the trash', 'glpimcp'), 'type' => Items::typeLabel($item), 'objet' => self::display($item)];
                         break;
 
                     case 'config':
@@ -156,7 +156,7 @@ final class Operations
                             }
                             $changes[$k] = ['avant' => $current[$k] ?? null, 'après' => $v];
                         }
-                        $preview[] = ['n' => $n, 'action' => 'modifier la configuration', 'contexte' => $context, 'changements' => $changes];
+                        $preview[] = ['n' => $n, 'action' => __('change the setup', 'glpimcp'), 'contexte' => $context, 'changements' => $changes];
                         $sensitive = true;
                         break;
 
@@ -167,7 +167,7 @@ final class Operations
                         foreach ($op['rights'] ?? [] as $k => $v) {
                             $changes[$k] = ['avant' => (int) ($current[$k] ?? 0), 'après' => (int) $v];
                         }
-                        $preview[] = ['n' => $n, 'action' => 'modifier les droits du profil', 'objet' => $profile->getName(), 'changements' => $changes];
+                        $preview[] = ['n' => $n, 'action' => __('change the profile rights', 'glpimcp'), 'objet' => $profile->getName(), 'changements' => $changes];
                         $sensitive = true;
                         break;
 
@@ -187,7 +187,7 @@ final class Operations
                         }
                         $preview[] = [
                             'n'          => $n,
-                            'action'     => $kind === 'form_destination_add' ? 'ajouter une destination' : 'modifier la destination #' . (int) $op['destination_id'],
+                            'action'     => $kind === 'form_destination_add' ? __('add a destination', 'glpimcp') : sprintf(__('update destination #%d', 'glpimcp'), (int) $op['destination_id']),
                             'formulaire' => $form->getName(),
                         ] + FormBuilder::previewDestinations($norm)[0];
                         break;
@@ -198,7 +198,7 @@ final class Operations
                         break;
 
                     case 'software_unmerge':
-                        $preview[] = ['n' => $n, 'action' => 'annuler une fusion de logiciels', 'logiciel' => '#' . (int) $op['target_id'], 'à_séparer' => count($op['sources'] ?? []) . ' logiciel(s)'];
+                        $preview[] = ['n' => $n, 'action' => __('undo a software merge', 'glpimcp'), 'logiciel' => '#' . (int) $op['target_id'], 'à_séparer' => count($op['sources'] ?? []) . ' logiciel(s)'];
                         break;
 
                     case 'form_submit':
@@ -210,7 +210,7 @@ final class Operations
                         }
                         $preview[] = [
                             'n'        => $n,
-                            'action'   => 'soumettre le formulaire',
+                            'action'   => __('submit the form', 'glpimcp'),
                             'objet'    => $form->getName(),
                             'réponses' => FormBuilder::humanAnswers($form, $answers),
                         ];
@@ -536,14 +536,14 @@ final class Operations
         $kind = (string) ($op['op'] ?? '');
         $class = ltrim((string) ($op['itemtype'] ?? ''), '\\');
         return match (true) {
-            $kind === 'delete' && class_exists($class) && is_subclass_of($class, \CommonDBRelation::class) => 'oui (lien recréé)',
-            $kind === 'delete' && (!empty($op['purge']) || (class_exists($class) && is_subclass_of($class, CommonDBTM::class) && !(new $class())->maybeDeleted())) => 'NON : suppression définitive',
-            $kind === 'delete'      => 'oui (restauration depuis la corbeille)',
-            $kind === 'add'         => 'oui (suppression de l\'élément créé ; les notifications déjà parties ne sont pas rappelées)',
-            $kind === 'update'      => 'oui (anciennes valeurs), sauf champs spéciaux signalés',
-            $kind === 'form_submit' => 'partielle : les objets créés sont supprimables, les notifications envoyées ne sont pas rappelées',
-            $kind === 'software_merge' => 'oui (séparation des logiciels fusionnés)',
-            default                 => 'oui',
+            $kind === 'delete' && class_exists($class) && is_subclass_of($class, \CommonDBRelation::class) => __('yes (link recreated)', 'glpimcp'),
+            $kind === 'delete' && (!empty($op['purge']) || (class_exists($class) && is_subclass_of($class, CommonDBTM::class) && !(new $class())->maybeDeleted())) => __('NO: permanent deletion', 'glpimcp'),
+            $kind === 'delete'      => __('yes (restore from the trash)', 'glpimcp'),
+            $kind === 'add'         => __('yes (deletion of the created item; notifications already sent are not recalled)', 'glpimcp'),
+            $kind === 'update'      => __('yes (previous values), except special fields reported', 'glpimcp'),
+            $kind === 'form_submit' => __('partial: created items can be deleted, notifications sent are not recalled', 'glpimcp'),
+            $kind === 'software_merge' => __('yes (separation of the merged software)', 'glpimcp'),
+            default                 => __('yes', 'glpimcp'),
         };
     }
 

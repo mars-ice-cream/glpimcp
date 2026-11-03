@@ -60,7 +60,7 @@ if (isset($_POST['update_permissions'])) {
     $changes = [];
     foreach ($before as $k => $on) {
         if ((int) $on !== $values['perm_' . $k]) {
-            $changes[] = Permissions::CATEGORIES[$k][0] . ($values['perm_' . $k] ? ' : activé' : ' : désactivé');
+            $changes[] = Permissions::label($k) . ($values['perm_' . $k] ? ' : activé' : ' : désactivé');
         }
     }
     if ($changes !== []) {
@@ -240,6 +240,8 @@ echo '<p class="text-muted">' . __('These switches come on top of GLPI rights: a
 echo '<form method="post" action="">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . '<div class="row g-2">';
 $perms = Permissions::all();
 foreach (Permissions::CATEGORIES as $k => [$label, $desc, $default]) {
+    $label = Permissions::label($k);
+    $desc = Permissions::description($k);
     echo '<div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="perm_' . $k . '" value="1" id="perm_' . $k . '"' . ($perms[$k] ? ' checked' : '') . '>';
     echo '<label class="form-check-label" for="perm_' . $k . '"><strong>' . htmlescape($label) . '</strong>' . ($default ? '' : ' <span class="badge bg-orange-lt">' . __('risky', 'glpimcp') . '</span>') . '<br><small class="text-muted">' . htmlescape($desc) . '</small></label></div></div>';
 }

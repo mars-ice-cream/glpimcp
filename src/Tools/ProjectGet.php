@@ -26,7 +26,7 @@ class ProjectGet extends Tool
 
     public function title(): string
     {
-        return 'Projet complet';
+        return __('Full project', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

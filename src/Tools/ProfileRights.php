@@ -33,7 +33,7 @@ class ProfileRights extends Tool
 
     public function title(): string
     {
-        return 'Droits des profils';
+        return __('Profile rights', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool
@@ -117,7 +117,7 @@ class ProfileRights extends Tool
                 throw new ToolException("Module de droits « {$module} » inconnu.");
             }
         }
-        return PendingActions::propose($ctx, $this->name(), 'Modification des droits du profil « ' . $profile->getName() . ' »', [[
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Change of the rights of profile « %s »', 'glpimcp'), $profile->getName()), [[
             'op' => 'profile_rights', 'profiles_id' => $pid, 'rights' => $changes,
         ]]);
     }

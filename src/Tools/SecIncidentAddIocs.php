@@ -23,7 +23,7 @@ class SecIncidentAddIocs extends Tool
 
     public function title(): string
     {
-        return 'Ajouter des IOC à un incident';
+        return __('Add IOCs to an incident', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -108,7 +108,7 @@ class SecIncidentAddIocs extends Tool
             throw new ToolException('Aucun nouvel indicateur : ' . ($skipped ? 'tous sont déjà dans l\'incident.' : 'liste vide.'));
         }
         $ref = $incident->fields['reference'] ?: ('#' . $incident->getID());
-        $out = PendingActions::propose($ctx, $this->name(), count($ops) . " IOC dans l'incident {$ref}", $ops);
+        $out = PendingActions::propose($ctx, $this->name(), sprintf(__('%1$d IOC in incident %2$s', 'glpimcp'), count($ops), $ref), $ops);
         if ($skipped) {
             $out['déjà_présents_ignorés'] = $skipped;
         }

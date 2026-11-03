@@ -109,14 +109,14 @@ final class OAuthController extends AbstractController
         // (« session expirée ») et ferait passer par une page d'erreur + déconnexion qui ré-encode l'URL.
         if (!Session::getLoginUserID()) {
             if ($request->isMethod('POST')) {
-                return $this->page(fn() => print('<div class="alert alert-warning">Session GLPI expirée : relancez la connexion depuis l\'assistant.</div>'), 401);
+                return $this->page(fn() => print('<div class="alert alert-warning">' . htmlescape(__('GLPI session expired: start the connection again from the assistant.', 'glpimcp')) . '</div>'), 401);
             }
             $target = $request->getPathInfo() . ($request->getQueryString() !== null ? '?' . $request->getQueryString() : '');
             // Double encodage : GLPI applique un rawurldecode() de plus avant de rediriger (sinon %26, %2B… seraient perdus)
             return new RedirectResponse(($CFG_GLPI['root_doc'] ?? '') . '/?redirect=' . rawurlencode(rawurlencode($target)));
         }
         if (Session::getCurrentInterface() === false) {
-            return $this->page(fn() => print('<div class="alert alert-danger">Aucun profil GLPI actif.</div>'), 403);
+            return $this->page(fn() => print('<div class="alert alert-danger">' . htmlescape(__('No active GLPI profile.', 'glpimcp')) . '</div>'), 403);
         }
 
         $q = $request->isMethod('POST') ? $request->request->all() : $request->query->all();

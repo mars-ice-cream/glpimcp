@@ -516,3 +516,385 @@ msgstr "retirés :"
 
 msgid "%d tools not shown: the GLPI rights of this profile do not give access to them"
 msgstr "%d outils non affichés : les droits GLPI de ce profil n'y donnent pas accès"
+
+# 1.6.0 — interface en français et en anglais
+msgid "%1$d IOC in incident %2$s"
+msgstr "%1$d IOC dans l'incident %2$s"
+
+msgid "%1$d event(s) in the timeline of incident %2$s"
+msgstr "%1$d événement(s) dans la chronologie de l'incident %2$s"
+
+msgid "%1$d tasks in project %2$s"
+msgstr "%1$d tâches dans le projet %2$s"
+
+msgid "AI action journal"
+msgstr "Journal des actions IA"
+
+msgid "Acceptance of approval request #%d"
+msgstr "Acceptation de la validation #%d"
+
+msgid "Actions awaiting confirmation"
+msgstr "Actions en attente de confirmation"
+
+msgid "Add %1$s on %2$s"
+msgstr "Ajout %1$s sur %2$s"
+
+msgid "Add IOCs to an incident"
+msgstr "Ajouter des IOC à un incident"
+
+msgid "Add a follow-up"
+msgstr "Ajouter un suivi"
+
+msgid "Add a project task"
+msgstr "Ajouter une tâche de projet"
+
+msgid "Add a task"
+msgstr "Ajouter une tâche"
+
+msgid "Add to an incident timeline"
+msgstr "Ajouter à la chronologie d'un incident"
+
+msgid "Answer an approval request"
+msgstr "Répondre à une demande de validation"
+
+msgid "Apply a batch of operations (primitive)"
+msgstr "Appliquer un lot d'opérations (primitive)"
+
+msgid "Asset overview"
+msgstr "Vue d'ensemble du parc"
+
+msgid "Assign / add an actor"
+msgstr "Attribuer / ajouter un acteur"
+
+msgid "Available GLPI item types"
+msgstr "Types d'objets GLPI disponibles"
+
+msgid "Available forms"
+msgstr "Formulaires disponibles"
+
+msgid "Bulk read (primitive)"
+msgstr "Lecture en masse (primitive)"
+
+msgid "Cancel a pending action"
+msgstr "Annuler une action en attente"
+
+msgid "Change of the rights of profile « %s »"
+msgstr "Modification des droits du profil « %s »"
+
+msgid "Change of the setup"
+msgstr "Modification de la configuration"
+
+msgid "Change the general setup"
+msgstr "Modifier la configuration générale"
+
+msgid "Change working entity"
+msgstr "Changer d'entité de travail"
+
+msgid "Confirm an action"
+msgstr "Confirmer une action"
+
+msgid "Create one or more items"
+msgstr "Créer un ou plusieurs objets"
+
+msgid "Creation of %d item(s)"
+msgstr "Création de %d objet(s)"
+
+msgid "DELETE PERMANENTLY"
+msgstr "SUPPRIMER DÉFINITIVEMENT"
+
+msgid "Declaration of security incident « %s »"
+msgstr "Déclaration de l'incident de sécurité « %s »"
+
+msgid "Declare a security incident"
+msgstr "Déclarer un incident de sécurité"
+
+msgid "Delete items"
+msgstr "Supprimer des objets"
+
+msgid "Deletion of %d item(s)"
+msgstr "Suppression de %d objet(s)"
+
+msgid "Existing business rules"
+msgstr "Règles métier existantes"
+
+msgid "Facts about the GLPI instance (primitive)"
+msgstr "Faits sur l'instance GLPI (primitive)"
+
+msgid "Fields of an item type"
+msgstr "Champs d'un type d'objet"
+
+msgid "Fill in and submit a form"
+msgstr "Remplir et envoyer un formulaire"
+
+msgid "Forced undo despite changes made since the AI action"
+msgstr "Annulation forcée malgré des modifications faites depuis l'action IA"
+
+msgid "Form question types"
+msgstr "Types de questions de formulaire"
+
+msgid "Full item record"
+msgstr "Fiche complète d'un objet"
+
+msgid "Full project"
+msgstr "Projet complet"
+
+msgid "Full security incident"
+msgstr "Incident de sécurité complet"
+
+msgid "Full ticket with history"
+msgstr "Ticket complet avec historique"
+
+msgid "GLPI session expired: start the connection again from the assistant."
+msgstr "Session GLPI expirée : relancez la connexion depuis l'assistant."
+
+msgid "General setup of GLPI or of this plugin"
+msgstr "Configuration générale de GLPI ou de ce plugin"
+
+msgid "List projects"
+msgstr "Lister les projets"
+
+msgid "My project tasks"
+msgstr "Mes tâches de projet"
+
+msgid "NO: permanent deletion"
+msgstr "NON : suppression définitive"
+
+msgid "No active GLPI profile."
+msgstr "Aucun profil GLPI actif."
+
+msgid "Open a ticket"
+msgstr "Ouvrir un ticket"
+
+msgid "Opening of ticket « %s »"
+msgstr "Ouverture du ticket « %s »"
+
+msgid "Permanent deletion (irreversible)"
+msgstr "Suppression définitive (irréversible)"
+
+msgid "Private follow-up on %s"
+msgstr "Suivi privé sur %s"
+
+msgid "Profile rights"
+msgstr "Droits des profils"
+
+msgid "Progress a remediation task"
+msgstr "Avancer une tâche de remédiation"
+
+msgid "Public follow-up on %s"
+msgstr "Suivi public sur %s"
+
+msgid "Questions of a form"
+msgstr "Questions d'un formulaire"
+
+msgid "Read the general setup"
+msgstr "Lire la configuration générale"
+
+msgid "Refusal of approval request #%d"
+msgstr "Refus de la validation #%d"
+
+msgid "Remediation task « %s »"
+msgstr "Tâche de remédiation « %s »"
+
+msgid "Search GLPI items"
+msgstr "Rechercher des objets GLPI"
+
+msgid "Search the knowledge base"
+msgstr "Chercher dans la base de connaissances"
+
+msgid "Security incidents"
+msgstr "Incidents de sécurité"
+
+msgid "Sensitive operation (administrator's policy: approval of all sensitive operations)"
+msgstr "Opération sensible (politique de l'administrateur : approbation de toutes les opérations sensibles)"
+
+msgid "Solution on %s"
+msgstr "Solution sur %s"
+
+msgid "Solve a ticket"
+msgstr "Résoudre un ticket"
+
+msgid "Submission of form « %s »"
+msgstr "Envoi du formulaire « %s »"
+
+msgid "Task on %s"
+msgstr "Tâche sur %s"
+
+msgid "Task « %1$s » in project %2$s"
+msgstr "Tâche « %1$s » dans le projet %2$s"
+
+msgid "Undo a past AI action"
+msgstr "Annuler une action IA passée"
+
+msgid "Undo of AI action #%1$d of %2$s by %3$s: %4$s"
+msgstr "Annulation de l'action IA #%1$d du %2$s par %3$s : %4$s"
+
+msgid "Update a project task"
+msgstr "Mettre à jour une tâche de projet"
+
+msgid "Update of %d item(s)"
+msgstr "Modification de %d objet(s)"
+
+msgid "Update of task %s"
+msgstr "Mise à jour de la tâche %s"
+
+msgid "Update one or more items"
+msgstr "Modifier un ou plusieurs objets"
+
+msgid "User accounts, groups or authorizations"
+msgstr "Comptes, groupes ou habilitations des utilisateurs"
+
+msgid "Who am I in GLPI?"
+msgstr "Qui suis-je dans GLPI ?"
+
+msgid "add a destination"
+msgstr "ajouter une destination"
+
+msgid "approved"
+msgstr "approuvé"
+
+msgid "cancelled"
+msgstr "annulé"
+
+msgid "change the profile rights"
+msgstr "modifier les droits du profil"
+
+msgid "change the setup"
+msgstr "modifier la configuration"
+
+msgid "create"
+msgstr "créer"
+
+msgid "executed"
+msgstr "exécuté"
+
+msgid "failed"
+msgstr "échec"
+
+msgid "move to the trash"
+msgstr "mettre à la corbeille"
+
+msgid "partial: created items can be deleted, notifications sent are not recalled"
+msgstr "partielle : les objets créés sont supprimables, les notifications envoyées ne sont pas rappelées"
+
+msgid "refused"
+msgstr "refusé"
+
+msgid "remove the link"
+msgstr "retirer le lien"
+
+msgid "restore from the trash"
+msgstr "restaurer depuis la corbeille"
+
+msgid "submit the form"
+msgstr "soumettre le formulaire"
+
+msgid "suspended"
+msgstr "suspendu"
+
+msgid "undo a software merge"
+msgstr "annuler une fusion de logiciels"
+
+msgid "update"
+msgstr "modifier"
+
+msgid "update destination #%d"
+msgstr "modifier la destination #%d"
+
+msgid "yes"
+msgstr "oui"
+
+msgid "yes (deletion of the created item; notifications already sent are not recalled)"
+msgstr "oui (suppression de l'élément créé ; les notifications déjà parties ne sont pas rappelées)"
+
+msgid "yes (link recreated)"
+msgstr "oui (lien recréé)"
+
+msgid "yes (previous values), except special fields reported"
+msgstr "oui (anciennes valeurs), sauf champs spéciaux signalés"
+
+msgid "yes (restore from the trash)"
+msgstr "oui (restauration depuis la corbeille)"
+
+msgid "yes (separation of the merged software)"
+msgstr "oui (séparation des logiciels fusionnés)"
+
+msgid "Assistance"
+msgstr "Assistance"
+
+msgid "Create tickets, add follow-ups, tasks, solutions, actors, answer approval requests"
+msgstr "Créer des tickets, ajouter suivis, tâches, solutions, acteurs, répondre aux validations"
+
+msgid "Fill in forms"
+msgstr "Remplir des formulaires"
+
+msgid "Submit the forms of the service catalog on the user's behalf"
+msgstr "Soumettre les formulaires du catalogue de services au nom de l'utilisateur"
+
+msgid "Create and update items"
+msgstr "Créer et modifier des éléments"
+
+msgid "Hardware, locations, categories, statuses, contracts, entities, calendars, SLA…"
+msgstr "Matériel, lieux, catégories, statuts, contrats, entités, calendriers, SLA…"
+
+msgid "Security incidents (SecIncident)"
+msgstr "Incidents de sécurité (SecIncident)"
+
+msgid "Declare an incident, add to its timeline and IOCs, update remediation tasks. Never deletion or closing"
+msgstr "Déclarer un incident, alimenter sa chronologie et ses IOC, mettre à jour les tâches de remédiation. Jamais de suppression ni de clôture"
+
+msgid "Projects"
+msgstr "Projets"
+
+msgid "Create and update project tasks, their team and their links to tickets"
+msgstr "Créer et mettre à jour des tâches de projet, leur équipe et leurs liens avec les tickets"
+
+msgid "Move to trash"
+msgstr "Mettre à la corbeille"
+
+msgid "Move items to the trash (can be restored)"
+msgstr "Envoyer des éléments à la corbeille (restaurables)"
+
+msgid "Delete permanently"
+msgstr "Supprimer définitivement"
+
+msgid "Irreversible deletion (except undoing an AI action)"
+msgstr "Suppression irréversible (hors annulation d'une action IA)"
+
+msgid "Design forms"
+msgstr "Concevoir des formulaires"
+
+msgid "Create, merge, translate forms and their destinations"
+msgstr "Créer, fusionner, traduire des formulaires et leurs destinations"
+
+msgid "Rules"
+msgstr "Règles"
+
+msgid "Ticket business rules, dictionary and software categories"
+msgstr "Règles métier des tickets, dictionnaire et catégories de logiciels"
+
+msgid "Software merge"
+msgstr "Fusion de logiciels"
+
+msgid "Merge duplicate software in the catalog"
+msgstr "Fusionner les logiciels en double du catalogue"
+
+msgid "Users and groups"
+msgstr "Utilisateurs et groupes"
+
+msgid "Create or update accounts, groups and their authorizations"
+msgstr "Créer ou modifier des comptes, des groupes et leurs habilitations"
+
+msgid "Change the rights of a GLPI profile"
+msgstr "Modifier les droits d'un profil GLPI"
+
+msgid "General setup"
+msgstr "Configuration générale"
+
+msgid "General GLPI settings (e-mails, security, inventory…)"
+msgstr "Réglages généraux de GLPI (e-mails, sécurité, inventaire…)"
+
+msgid "Undo from the journal"
+msgstr "Annulation depuis le journal"
+
+msgid "Undo an action made by the AI (always with preview and confirmation)"
+msgstr "Annuler une action faite par l'IA (toujours avec aperçu et confirmation)"

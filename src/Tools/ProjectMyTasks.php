@@ -22,7 +22,7 @@ class ProjectMyTasks extends Tool
 
     public function title(): string
     {
-        return 'Mes tâches de projet';
+        return __('My project tasks', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

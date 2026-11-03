@@ -27,7 +27,7 @@ class SystemFacts extends Tool
 
     public function title(): string
     {
-        return 'Faits sur l\'instance GLPI (primitive)';
+        return __('Facts about the GLPI instance (primitive)', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

@@ -19,7 +19,7 @@ class ConfirmAction extends Tool
 
     public function title(): string
     {
-        return 'Confirmer une action';
+        return __('Confirm an action', 'glpimcp');
     }
 
     public function isWrite(): bool

@@ -20,7 +20,7 @@ class RuleList extends Tool
 
     public function title(): string
     {
-        return 'Règles métier existantes';
+        return __('Existing business rules', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

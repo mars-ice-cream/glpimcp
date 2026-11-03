@@ -23,7 +23,7 @@ class FormList extends Tool
 
     public function title(): string
     {
-        return 'Formulaires disponibles';
+        return __('Available forms', 'glpimcp');
     }
 
     public function description(): string

@@ -135,7 +135,7 @@ final class RateLimiter
         if ($cid > 0 && $l['client_writes_per_hour'] > 0) {
             $n = $count ? self::hit('w:c' . $cid, 3600) : self::peek('w:c' . $cid, 3600);
             if ($n > $l['client_writes_per_hour']) {
-                self::alertOnce('client' . $cid, 'Quota global du client IA atteint', ['client' => $cid, 'limite_par_heure' => $l['client_writes_per_hour']]);
+                self::alertOnce('client' . $cid, 'Quota global du client IA atteint / AI client quota reached', ['Client' => $cid, 'Limite par heure / Limit per hour' => $l['client_writes_per_hour']]);
                 throw new ToolException("Quota global de l'assistant de l'entreprise atteint ({$l['client_writes_per_hour']} écritures par heure). L'administrateur a été prévenu.", ['quota' => 'client/heure']);
             }
         }
@@ -273,12 +273,14 @@ final class RateLimiter
             AuditLog::write(new Context((int) $token['users_id'], $token), 'garde-fou', 'suspendu', $reason, [
                 'jeton' => $token['name'] ?? '', 'adresse_ip' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
             ]);
-            self::mail('[GLPI MCP] Jeton suspendu : ' . ($token['name'] ?? '#' . $token['id']), [
-                'Jeton'       => ($token['name'] ?? '') . ' (#' . (int) $token['id'] . ')',
-                'Compte'      => getUserName((int) $token['users_id']),
-                'Raison'      => $reason,
-                'Adresse IP'  => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
-                'Que faire'   => 'Vérifier l\'activité dans le journal IA ; si le jeton a fuité, le laisser révoqué et en créer un autre.',
+            // Alertes en français et en anglais : la langue des destinataires n'est pas connue ici
+            self::mail('[GLPI MCP] Jeton suspendu / Token suspended : ' . ($token['name'] ?? '#' . $token['id']), [
+                'Jeton / Token'           => ($token['name'] ?? '') . ' (#' . (int) $token['id'] . ')',
+                'Compte / Account'        => getUserName((int) $token['users_id']),
+                'Raison / Reason'         => $reason,
+                'Adresse IP / IP address' => (string) ($_SERVER['REMOTE_ADDR'] ?? ''),
+                'Que faire'               => 'Vérifier l\'activité dans le journal IA ; si le jeton a fuité, le laisser révoqué et en créer un autre.',
+                'What to do'              => 'Check the activity in the AI journal; if the token leaked, keep it revoked and create a new one.',
             ]);
         } catch (Throwable $e) {
             trigger_error('glpimcp suspension: ' . $e->getMessage(), E_USER_WARNING);

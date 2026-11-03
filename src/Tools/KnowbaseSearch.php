@@ -20,7 +20,7 @@ class KnowbaseSearch extends Tool
 
     public function title(): string
     {
-        return 'Chercher dans la base de connaissances';
+        return __('Search the knowledge base', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

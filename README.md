@@ -1,6 +1,6 @@
 # GLPI MCP — piloter GLPI avec une IA, sans jamais dépasser ses droits
 
-Plugin **natif GLPI 11**, open source (GPL-3.0-or-later), qui transforme GLPI en serveur
+Plugin **natif GLPI 11 et 12**, open source (GPL-3.0-or-later), qui transforme GLPI en serveur
 [MCP](https://modelcontextprotocol.io) (Model Context Protocol). Un assistant IA (Claude, ChatGPT,
 Le Chat, Copilot ou tout client MCP) peut alors utiliser GLPI au quotidien : rechercher, consulter,
 créer et modifier des éléments, traiter des tickets, remplir les formulaires du catalogue.
@@ -174,7 +174,17 @@ sont pas couverts.
 
 ## Installation
 
-Prérequis : GLPI 11.0 → 11.9, PHP ≥ 8.2.
+Prérequis : GLPI 11.x (PHP ≥ 8.2) ou GLPI 12.x (PHP ≥ 8.3).
+
+Interface en **français et en anglais**, selon la langue du compte GLPI : pages d'administration, onglets,
+page d'approbation, titres des outils, libellés et aperçus envoyés à l'assistant, résumés du journal. Les
+descriptions techniques des outils et les messages d'erreur destinés à l'assistant restent en français :
+l'assistant les reformule dans la langue de l'utilisateur. Les alertes e-mail sont bilingues.
+
+**GLPI 12** : approuver une action critique et modifier les réglages de l'assistant (page d'administration,
+onglet d'un profil) exigent la ré-authentification de GLPI 12 (mot de passe, LDAP, CAS ou TOTP), comme la
+configuration et les profils de GLPI. Le point d'entrée MCP, authentifié par jeton et sans cookie, en est
+exempté comme l'API de GLPI ; les actions critiques de l'IA passent de toute façon par l'approbation humaine.
 
 ```bash
 cd /var/www/glpi/plugins            # ou marketplace/
@@ -394,7 +404,7 @@ file de notifications de GLPI. Un jeton volé reste donc borné : quelques ticke
 - **De bout en bout**, via le protocole MCP comme un vrai client, contre un GLPI **jetable** :
 
   ```bash
-  # GLPI 11.0.12 téléchargé, base dédiée (recréée), plugin, données de test, serveur sur :8080
+  # GLPI 11.0.12 téléchargé (GLPI_VERSION=12.0.1 pour GLPI 12), base dédiée (recréée), plugin, données de test, serveur sur :8080
   DB_HOST=127.0.0.1 DB_USER=root DB_PASSWORD=root WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_setup.sh
   WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_run.sh          # -k motif pour un sous-ensemble
   ```
@@ -411,7 +421,8 @@ file de notifications de GLPI. Un jeton volé reste donc borné : quelques ticke
   sans consentement, IP)**, annulation forcée, interrupteurs, formulaires, langue, logiciels, projets, SecIncident
   (si actif), primitives, OAuth. Tout ce qui est créé est préfixé `TEST-MCP` puis annulé via le journal.
 - **Intégration continue** (`.github/workflows/tests.yml`) : syntaxe PHP 8.2 → 8.4, tests unitaires,
-  traductions, XML du catalogue, puis le job *Bout en bout* (GLPI 11.0.12 + MariaDB 11.4 jetables).
+  traductions, XML du catalogue, puis *Analyse statique* (PHPStan contre GLPI 11.0.12 et 12.0.1 : méthodes, classes et signatures) et
+  *Bout en bout* (GLPI 11.0.12 et 12.0.1 + MariaDB 11.4 jetables).
 
 ## Publication dans le catalogue des plugins GLPI
 

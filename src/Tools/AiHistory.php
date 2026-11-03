@@ -22,7 +22,7 @@ class AiHistory extends Tool
 
     public function title(): string
     {
-        return 'Journal des actions IA';
+        return __('AI action journal', 'glpimcp');
     }
 
     public function description(): string

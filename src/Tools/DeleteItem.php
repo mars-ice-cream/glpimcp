@@ -20,7 +20,7 @@ class DeleteItem extends Tool
 
     public function title(): string
     {
-        return 'Supprimer des objets';
+        return __('Delete items', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -62,6 +62,6 @@ class DeleteItem extends Tool
                 'purge'    => !empty($spec['purge']),
             ];
         }
-        return PendingActions::propose($ctx, $this->name(), (string) ($args['summary'] ?? sprintf('Suppression de %d objet(s)', count($ops))), $ops);
+        return PendingActions::propose($ctx, $this->name(), (string) ($args['summary'] ?? sprintf(__('Deletion of %d item(s)', 'glpimcp'), count($ops))), $ops);
     }
 }

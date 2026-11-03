@@ -26,7 +26,7 @@ class SecIncidentDeclare extends Tool
 
     public function title(): string
     {
-        return 'Déclarer un incident de sécurité';
+        return __('Declare a security incident', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -121,7 +121,7 @@ class SecIncidentDeclare extends Tool
             'content' => Items::toHtml('Déclaration préparée par un assistant IA (GLPI MCP) et confirmée par ' . getUserName($ctx->users_id) . '.'),
         ]];
 
-        $out = PendingActions::propose($ctx, $this->name(), 'Déclaration de l\'incident de sécurité « ' . $input['name'] . ' »', $ops);
+        $out = PendingActions::propose($ctx, $this->name(), sprintf(__('Declaration of security incident « %s »', 'glpimcp'), $input['name']), $ops);
         if (isset($warn)) {
             $out['avertissements'][] = $warn;
         }

@@ -24,7 +24,7 @@ class ProjectTaskAdd extends Tool
 
     public function title(): string
     {
-        return 'Ajouter une tâche de projet';
+        return __('Add a project task', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -117,8 +117,8 @@ class ProjectTaskAdd extends Tool
             array_push($ops, ...self::teamAndLinks('@ref:' . $ref, $t));
         }
         $summary = count($list) === 1
-            ? 'Tâche « ' . $list[0]['name'] . ' » dans le projet ' . $project->getNameID()
-            : count($list) . ' tâches dans le projet ' . $project->getNameID();
+            ? sprintf(__('Task « %1$s » in project %2$s', 'glpimcp'), $list[0]['name'], $project->getNameID())
+            : sprintf(__('%1$d tasks in project %2$s', 'glpimcp'), count($list), $project->getNameID());
         return PendingActions::propose($ctx, $this->name(), $summary, $ops);
     }
 

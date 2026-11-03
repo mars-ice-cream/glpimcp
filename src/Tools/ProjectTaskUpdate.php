@@ -25,7 +25,7 @@ class ProjectTaskUpdate extends Tool
 
     public function title(): string
     {
-        return 'Mettre à jour une tâche de projet';
+        return __('Update a project task', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -123,6 +123,6 @@ class ProjectTaskUpdate extends Tool
         if ($ops === []) {
             throw new ToolException('Rien à modifier : aucun champ fourni, ou valeurs déjà en place.');
         }
-        return PendingActions::propose($ctx, $this->name(), 'Mise à jour de la tâche ' . $task->getNameID(), $ops);
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Update of task %s', 'glpimcp'), $task->getNameID()), $ops);
     }
 }

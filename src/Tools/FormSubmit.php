@@ -21,7 +21,7 @@ class FormSubmit extends Tool
 
     public function title(): string
     {
-        return 'Remplir et envoyer un formulaire';
+        return __('Fill in and submit a form', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -48,7 +48,7 @@ class FormSubmit extends Tool
     {
         $form = Operations::loadAnswerableForm((int) self::requireArg($args, 'id'));
         $answers = FormBuilder::normalizeAnswers($form, (array) ($args['answers'] ?? []));
-        return PendingActions::propose($ctx, $this->name(), 'Envoi du formulaire « ' . $form->getName() . ' »', [[
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Submission of form « %s »', 'glpimcp'), $form->getName()), [[
             'op'       => 'form_submit',
             'forms_id' => $form->getID(),
             'answers'  => $answers,

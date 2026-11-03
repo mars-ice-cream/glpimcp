@@ -21,7 +21,7 @@ class TicketValidationAnswer extends Tool
 
     public function title(): string
     {
-        return 'Répondre à une demande de validation';
+        return __('Answer an approval request', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -51,7 +51,7 @@ class TicketValidationAnswer extends Tool
         $id = (int) self::requireArg($args, 'validation_id');
         Items::load($itemtype, $id, READ);
         $accept = ($args['decision'] ?? '') === 'accepter';
-        return PendingActions::propose($ctx, $this->name(), ($accept ? 'Acceptation' : 'Refus') . " de la validation #{$id}", [[
+        return PendingActions::propose($ctx, $this->name(), sprintf($accept ? __('Acceptance of approval request #%d', 'glpimcp') : __('Refusal of approval request #%d', 'glpimcp'), $id), [[
             'op'       => 'update',
             'itemtype' => $itemtype,
             'id'       => $id,

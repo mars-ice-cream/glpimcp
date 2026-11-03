@@ -137,7 +137,7 @@ foreach ($data['aperçu'] ?? [] as $op) {
         $changes = $rest !== [] ? $fmt($rest) : '';
     }
     $undo = (string) ($op['annulable'] ?? '');
-    $undo_class = str_starts_with($undo, 'NON') ? 'text-danger fw-bold' : (str_starts_with($undo, 'partielle') ? 'text-warning' : '');
+    $undo_class = preg_match('/^(NON|NO)\b/u', $undo) ? 'text-danger fw-bold' : (preg_match('/^(partielle|partial)/u', $undo) ? 'text-warning' : '');
     echo '<tr><td>' . (int) ($op['n'] ?? 0) . '</td><td>' . htmlescape((string) ($op['action'] ?? '')) . '</td><td>' . htmlescape($target) . '</td><td>' . $changes . '</td>'
         . '<td class="' . $undo_class . '">' . htmlescape($undo) . '</td></tr>';
 }

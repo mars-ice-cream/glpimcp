@@ -19,7 +19,7 @@ class ListPendingActions extends Tool
 
     public function title(): string
     {
-        return 'Actions en attente de confirmation';
+        return __('Actions awaiting confirmation', 'glpimcp');
     }
 
     public function description(): string

@@ -29,10 +29,10 @@ final class Approval
     {
         $rollback = !empty($meta['rollback_of']);
         $labels = [
-            'purge'        => 'Suppression définitive (irréversible)',
-            'users_groups' => 'Comptes, groupes ou habilitations des utilisateurs',
-            'rights'       => 'Droits des profils',
-            'config'       => 'Configuration générale de GLPI ou de ce plugin',
+            'purge'        => __('Permanent deletion (irreversible)', 'glpimcp'),
+            'users_groups' => __('User accounts, groups or authorizations', 'glpimcp'),
+            'rights'       => __('Profile rights', 'glpimcp'),
+            'config'       => __('General setup of GLPI or of this plugin', 'glpimcp'),
         ];
         $reasons = [];
         foreach ($ops as $op) {
@@ -47,10 +47,10 @@ final class Approval
             }
         }
         if ($rollback && !empty($meta['force'])) {
-            $reasons['force'] = 'Annulation forcée malgré des modifications faites depuis l\'action IA';
+            $reasons['force'] = __('Forced undo despite changes made since the AI action', 'glpimcp');
         }
         if ($scope === 'sensitive' && $sensitive_preview) {
-            $reasons['sensitive'] = 'Opération sensible (politique de l\'administrateur : approbation de toutes les opérations sensibles)';
+            $reasons['sensitive'] = __("Sensitive operation (administrator's policy: approval of all sensitive operations)", 'glpimcp');
         }
         return array_values($reasons);
     }

@@ -23,7 +23,7 @@ class CreateItems extends Tool
 
     public function title(): string
     {
-        return 'Créer un ou plusieurs objets';
+        return __('Create one or more items', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -76,7 +76,7 @@ class CreateItems extends Tool
                 'ref'      => isset($spec['ref']) ? (string) $spec['ref'] : null,
             ];
         }
-        $summary = (string) ($args['summary'] ?? sprintf('Création de %d objet(s)', count($ops)));
+        $summary = (string) ($args['summary'] ?? sprintf(__('Creation of %d item(s)', 'glpimcp'), count($ops)));
         return PendingActions::propose($ctx, $this->name(), $summary, $ops);
     }
 }

@@ -93,7 +93,7 @@ class ProfilePolicy extends CommonDBTM
             $cat = Permissions::TOOL_CATEGORIES[$t->name()] ?? null;
             $group = match (true) {
                 in_array($t->name(), Permissions::ALWAYS_ON, true) => __('Always available', 'glpimcp'),
-                $cat !== null => Permissions::CATEGORIES[$cat][0],
+                $cat !== null => Permissions::label($cat),
                 $t->isWrite() => __('Generic changes (subject to the action types)', 'glpimcp'),
                 default => __('Reading and discovery', 'glpimcp'),
             };
@@ -242,6 +242,8 @@ class ProfilePolicy extends CommonDBTM
         echo '<p class="text-muted">' . __('Uncheck an action type to withdraw it from this profile, including through generic tools (create, update, apply operations).', 'glpimcp') . '</p>';
         echo '<div class="row g-2">';
         foreach (Permissions::CATEGORIES as $k => [$label, $desc]) {
+            $label = Permissions::label($k);
+            $desc = Permissions::description($k);
             $global = Permissions::globallyEnabled($k);
             echo '<div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="categories[]" value="' . $k . '" id="glpimcp_c_' . $k . '"'
                 . ($global && !in_array($k, $denied, true) ? ' checked' : '') . ($global ? '' : ' disabled') . '>'
@@ -269,7 +271,7 @@ class ProfilePolicy extends CommonDBTM
             ? sprintf(__('%d tools allowed', 'glpimcp'), count($policy['tools']))
             : __('all tools', 'glpimcp');
         if ($policy['denied_categories'] !== []) {
-            $parts[] = __('withdrawn:', 'glpimcp') . ' ' . implode(', ', array_map(fn($c) => Permissions::CATEGORIES[$c][0], $policy['denied_categories']));
+            $parts[] = __('withdrawn:', 'glpimcp') . ' ' . implode(', ', array_map(fn($c) => Permissions::label($c), $policy['denied_categories']));
         }
         return implode(' — ', $parts);
     }

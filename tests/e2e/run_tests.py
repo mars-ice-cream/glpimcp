@@ -417,14 +417,14 @@ def confirmation_et_annulation_simultanees():
 def approbation_humaine_obligatoire_pour_une_purge():
     need("admin")
     w = ok(TOK["admin"], "glpi_whoami")
-    if "Supprimer définitivement" in w["types_d_actions_désactivés_par_l_admin"]:
+    if any(x in w["types_d_actions_désactivés_par_l_admin"] for x in ("Supprimer définitivement", "Delete permanently")):
         raise Skip("« Supprimer définitivement » désactivé sur ce GLPI (la CI l'active)")
     r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " à purger"}}]})
     lid = r["résultats"][0]["id"]
     journal_ids.remove(r["journal_id"])
     p = ok(TOK["admin"], "glpi_delete_items", {"items": [{"itemtype": "Location", "id": lid, "purge": True}]})
     assert p["statut"] == "en_attente_d_approbation_humaine", p
-    assert any("définitive" in x for x in p["approbation_humaine"]["raisons"]), p
+    assert any("définitive" in x or "Permanent deletion" in x for x in p["approbation_humaine"]["raisons"]), p
     url = p["approbation_humaine"]["url"]
     # Le jeton MCP et le confirmation_id ne suffisent pas
     refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
@@ -437,7 +437,7 @@ def approbation_humaine_obligatoire_pour_une_purge():
         other = approval_page(glpi_session(os.environ["DUAL_LOGIN"], os.environ["DUAL_PASSWORD"]), url)
         assert 'name="decision"' not in other.text, "proposition visible par un autre compte"
     page = approval_page(s, url)
-    assert "à purger" in page.text and "NON" in page.text, "aperçu (cible, irréversibilité) absent de la page d'approbation"
+    assert "à purger" in page.text and re.search(r"NON ?:|NO:", page.text), "aperçu (cible, irréversibilité) absent de la page d'approbation"
     approve(s, url)
     if os.environ.get("GLPI_VERSION", "").startswith("12"):
         assert getattr(s, "reauth_seen", False), "GLPI 12 : approbation sans ré-authentification"
@@ -469,7 +469,7 @@ def alias_de_type_meme_classification_que_l_execution():
         assert data.get("statut") == "en_attente_d_approbation_humaine", f"compte créable sans approbation via un alias : {data}"
         ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": data["confirmation_id"]})
     else:
-        assert "Utilisateurs et groupes" in json.dumps(data, ensure_ascii=False), data
+        assert any(x in json.dumps(data, ensure_ascii=False) for x in ("Utilisateurs et groupes", "Users and groups")), data
 
 
 @test
@@ -768,7 +768,7 @@ def interrupteurs_par_type_d_action():
     need("admin")
     w = ok(TOK["admin"], "glpi_whoami")
     disabled = w["types_d_actions_désactivés_par_l_admin"]
-    if "Utilisateurs et groupes" not in disabled:
+    if not any(x in disabled for x in ("Utilisateurs et groupes", "Users and groups")):
         raise Skip("« Utilisateurs et groupes » activé sur ce GLPI")
     refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Group", "fields": {"name": PREFIX + " groupe"}}]}, contains="désactivée")
 
@@ -858,6 +858,30 @@ def outils_interdits_et_politique_par_profil():
 
 
 @test
+def interface_en_francais_et_en_anglais():
+    """Pages d'administration, titres d'outils et libellés envoyés à l'IA dans la langue du compte GLPI."""
+    need("admin")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    uid = ok(TOK["admin"], "glpi_whoami")["utilisateur"]["id"]
+    old = db(f"SELECT IFNULL(language, '-') FROM glpi_users WHERE id={uid}")[0][0]
+    expected = {
+        "fr_FR": ("Outils interdits pour tout le monde", "Qui suis-je dans GLPI ?", "Utilisateurs et groupes"),
+        "en_GB": ("Tools forbidden for everyone", "Who am I in GLPI?", "Users and groups"),
+    }
+    try:
+        for lang, (page_text, title, category) in expected.items():
+            db(f"UPDATE glpi_users SET language='{lang}' WHERE id={uid}")
+            page = glpi_session().get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
+            assert page_text in page.text, f"{lang} : « {page_text} » absent de la page d'administration"
+            titles = {t["name"]: t.get("title") for t in rpc(TOK["admin"], "tools/list")["tools"]}
+            assert titles.get("glpi_whoami") == title, f"{lang} : titre d'outil {titles.get('glpi_whoami')!r}"
+            assert category in ok(TOK["admin"], "glpi_whoami")["types_d_actions_désactivés_par_l_admin"], f"{lang} : libellé de type d'action"
+    finally:
+        db(f"UPDATE glpi_users SET language={'NULL' if old == '-' else repr(old)} WHERE id={uid}")
+
+
+@test
 def moteur_formulaire_titre_et_destination_conditionnelle():
     need("admin")
     spec = {"name": PREFIX + " formulaire", "entities_id": 0,
@@ -938,7 +962,7 @@ def projets_taches_equipe_et_annulation():
     jid = r["journal_id"]
     t1 = next(t["id"] for t in g["tâches"] if t["nom"] == "Phase 1")
     p = ok(TOK["admin"], "glpi_project_task_update", {"id": t1, "remove_users": [me]})
-    assert any(a["action"] == "retirer le lien" for a in p["aperçu"]), p
+    assert any(a["action"] in ("retirer le lien", "remove the link") for a in p["aperçu"]), p
     ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": p["confirmation_id"]})
     p = ok(TOK["admin"], "glpi_rollback_action", {"log_id": jid})
     ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})

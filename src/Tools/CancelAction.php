@@ -19,7 +19,7 @@ class CancelAction extends Tool
 
     public function title(): string
     {
-        return 'Annuler une action en attente';
+        return __('Cancel a pending action', 'glpimcp');
     }
 
     public function description(): string

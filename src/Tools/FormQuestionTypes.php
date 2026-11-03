@@ -19,7 +19,7 @@ class FormQuestionTypes extends Tool
 
     public function title(): string
     {
-        return 'Types de questions de formulaire';
+        return __('Form question types', 'glpimcp');
     }
 
     public function description(): string

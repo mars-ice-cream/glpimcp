@@ -22,7 +22,7 @@ class TicketAddTask extends Tool
 
     public function title(): string
     {
-        return 'Ajouter une tâche';
+        return __('Add a task', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -82,7 +82,7 @@ class TicketAddTask extends Tool
             $input['begin'] = date('Y-m-d H:i:s', $begin);
             $input['end']   = date('Y-m-d H:i:s', $begin + max(15, $minutes) * 60);
         }
-        return PendingActions::propose($ctx, $this->name(), 'Tâche sur ' . $parent->getNameID(), [[
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Task on %s', 'glpimcp'), $parent->getNameID()), [[
             'op' => 'add', 'itemtype' => $task_class, 'input' => $input,
         ]]);
     }

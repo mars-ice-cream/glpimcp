@@ -63,7 +63,7 @@ $line(User::getTypeName(1), htmlescape(getUserName($log['users_id'])));
 $line(__('Assistant', 'glpimcp'), htmlescape($log['client'] ?: '—'));
 $line(Profile::getTypeName(1), $log['profiles_id'] ? htmlescape(Dropdown::getDropdownName('glpi_profiles', $log['profiles_id'])) : '—');
 $line(__('Tool', 'glpimcp'), '<code>' . htmlescape($log['tool']) . '</code>');
-$line(__('Status'), '<span class="badge ' . $badge . '">' . htmlescape($log['status']) . '</span>');
+$line(__('Status'), '<span class="badge ' . $badge . '">' . htmlescape(LogView::statusLabel((string) $log['status'])) . '</span>');
 $line(__('Summary', 'glpimcp'), htmlescape($log['summary']));
 if ((int) $log['rollback_of']) {
     $line(__('Undoes', 'glpimcp'), '<a href="' . htmlescape(LogView::url((int) $log['rollback_of'])) . '">#' . (int) $log['rollback_of'] . '</a>');

@@ -23,7 +23,7 @@ class DescribeItemtype extends Tool
 
     public function title(): string
     {
-        return 'Champs d\'un type d\'objet';
+        return __('Fields of an item type', 'glpimcp');
     }
 
     public function description(): string

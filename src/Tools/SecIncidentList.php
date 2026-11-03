@@ -20,7 +20,7 @@ class SecIncidentList extends Tool
 
     public function title(): string
     {
-        return 'Incidents de sécurité';
+        return __('Security incidents', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

@@ -21,7 +21,7 @@ class ProjectList extends Tool
 
     public function title(): string
     {
-        return 'Lister les projets';
+        return __('List projects', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

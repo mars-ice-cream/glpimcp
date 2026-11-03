@@ -17,6 +17,13 @@ spl_autoload_register(function (string $class): void {
         }
     }
 });
+// Traduction GLPI : texte source (anglais) renvoyé tel quel
+if (!function_exists('__')) {
+    function __(string $str, string $domain = 'glpi'): string
+    {
+        return $str;
+    }
+}
 // Constantes GLPI utilisées par les classes testées
 if (!class_exists('Rule')) {
     eval('class Rule { const PATTERN_IS = 0; const PATTERN_IS_NOT = 1; const PATTERN_CONTAIN = 2; const PATTERN_NOT_CONTAIN = 3; const PATTERN_BEGIN = 4; const PATTERN_END = 5; const REGEX_MATCH = 6; const AND_MATCHING = "AND"; const OR_MATCHING = "OR"; }');
@@ -65,7 +72,7 @@ use GlpiPlugin\Glpimcp\Mcp\Approval;
 use GlpiPlugin\Glpimcp\Mcp\Operations;
 check('création ordinaire', Approval::reasons([['op' => 'add', 'itemtype' => 'Computer']], [], false, 'critical'), []);
 check('purge', count(Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], [], true, 'critical')), 1);
-check('droits de profil', Approval::reasons([['op' => 'profile_rights']], [], true, 'critical'), ['Droits des profils']);
+check('droits de profil', Approval::reasons([['op' => 'profile_rights']], [], true, 'critical'), ['Profile rights']);
 check('habilitation', count(Approval::reasons([['op' => 'add', 'itemtype' => 'Profile_User']], [], true, 'critical')), 1);
 check('configuration', count(Approval::reasons([['op' => 'config']], [], true, 'critical')), 1);
 check('annulation simple d\'une création', Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], ['rollback_of' => 3], true, 'critical'), []);
@@ -82,7 +89,7 @@ check('totale', Operations::undoability(['undo' => [['op' => 'delete']], 'irrév
 check('partielle', Operations::undoability(['undo' => [['op' => 'delete']], 'irréversible' => ['Notifications e-mail éventuellement générées pour X']])['niveau'], 'partielle');
 check('aucune', Operations::undoability(['undo' => [], 'irréversible' => ['Suppression définitive de X']])['niveau'], 'aucune');
 check('effets externes', count(Operations::undoability(['undo' => [1], 'irréversible' => ['Notifications e-mail éventuellement générées pour X', 'Champ spécial']])['effets_externes']), 1);
-check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NON'), true);
+check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NO'), true);
 
 echo "Adresses IP des clients IA\n";
 use GlpiPlugin\Glpimcp\OAuth\ClientPolicy as CP;

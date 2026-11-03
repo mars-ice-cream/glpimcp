@@ -23,7 +23,7 @@ class GetItem extends Tool
 
     public function title(): string
     {
-        return 'Fiche complète d\'un objet';
+        return __('Full item record', 'glpimcp');
     }
 
     public function description(): string
