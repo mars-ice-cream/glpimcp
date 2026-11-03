@@ -7,18 +7,49 @@ créer et modifier des éléments, traiter des tickets, remplir les formulaires 
 
 Quatre principes :
 
-1. **L'IA a exactement les droits du compte GLPI** qui a généré le jeton (profil + entités).
-   Elle passe par les classes GLPI (`can()`, règles métier, contrôles d'accès des formulaires),
-   jamais par du SQL d'écriture. Garde-fou supplémentaire : impossible de modifier un compte
-   qui a plus de droits que soi.
-2. **Rien n'est modifié sans validation humaine.** Chaque écriture renvoie d'abord un
-   *aperçu* (avant → après, champ par champ) et un `confirmation_id`. Seul un second appel
-   explicite (`glpi_confirm_action`) exécute, après une nouvelle vérification des droits.
-3. **Tout ou rien.** Une action, même de plusieurs dizaines d'opérations, s'exécute dans une
-   transaction unique. Après l'écriture, les valeurs sont relues dans GLPI et les écarts éventuels
-   (règle métier, contrôle GLPI) sont signalés.
+1. **L'IA a au plus les droits du compte GLPI, limités au périmètre du jeton.** Le profil et les
+   entités choisis à la création du jeton (ou au consentement OAuth) sont une limite : ni un en-tête
+   `X-GLPI-Profile` / `X-GLPI-Entity`, ni `glpi_switch_context`, ni un relais ne peuvent l'élargir.
+   L'IA passe par les classes GLPI (`can()`, règles métier, contrôles d'accès des formulaires), jamais
+   par du SQL d'écriture. Garde-fou supplémentaire : impossible de modifier un compte qui a plus de
+   droits que soi.
+2. **Rien n'est modifié sans aperçu, et rien de critique sans approbation humaine vérifiée.**
+   Chaque écriture renvoie d'abord un *aperçu* (avant → après, champ par champ, annulabilité de
+   chaque opération) et un `confirmation_id`. Le second appel `glpi_confirm_action` est fait par
+   l'assistant : **il ne prouve pas qu'un humain a vu l'aperçu**. C'est pourquoi les opérations
+   critiques (suppression définitive, comptes et groupes, droits des profils, configuration,
+   annulation forcée) exigent en plus que l'utilisateur **approuve lui-même dans GLPI**, connecté
+   avec son compte — le jeton MCP et le `confirmation_id` n'y suffisent jamais (voir plus bas).
+3. **Usage unique et cohérence.** Une confirmation ne peut produire qu'une exécution, même en cas
+   d'appels simultanés. Au moment de l'exécution, droits et réglages sont revérifiés et l'aperçu est
+   recalculé : si les données ont changé depuis, un nouvel aperçu est exigé. Les écritures en base
+   d'une action s'exécutent dans une transaction unique (tout ou rien en base) ; les effets hors base
+   (e-mails, appels de services externes par d'autres plugins) ne sont pas couverts par la transaction.
 4. **L'administrateur choisit ce que l'IA a le droit de faire**, par type d'action, en plus des
    droits GLPI ; les actions à risque sont désactivées par défaut.
+
+### Confirmation et approbation humaine
+
+| | Mode « toutes » (défaut) | Mode « sensibles » |
+|---|---|---|
+| Écriture ordinaire (ticket, suivi, élément…) | aperçu → `glpi_confirm_action` | **exécutée immédiatement** (pas d'aperçu préalable) |
+| Écriture sensible (corbeille, règles, entités, SLA, fusions…) | aperçu → `glpi_confirm_action` | aperçu → `glpi_confirm_action` |
+| Écriture critique (purge, comptes/groupes/habilitations, droits des profils, configuration, annulation forcée) | aperçu → **approbation dans GLPI** → `glpi_confirm_action` | idem |
+
+- `glpi_confirm_action` est un **second appel de l'assistant**. Il montre que l'assistant a été
+  programmé pour demander, pas qu'un humain a validé.
+- **L'approbation humaine** se fait sur une page GLPI (`/plugins/glpimcp/front/approval.php`) : session
+  GLPI authentifiée du **même** utilisateur, jeton CSRF de GLPI. La page montre l'action, les cibles,
+  les valeurs avant/après, ce qui ne pourra pas être défait, le contexte (assistant, profil, entité).
+  L'approbation est liée par empreinte à la proposition exacte (contenu du lot, aperçu, état des
+  objets visés, jeton, profil et entités actives) ; une proposition modifiée, expirée, déjà utilisée
+  ou devenue obsolète est refusée. Le journal enregistre qui a approuvé et quand.
+- La portée de l'approbation est réglable : *actions critiques* (défaut) ou *toutes les actions
+  sensibles*. Les réglages de GLPI MCP eux-mêmes ne sont jamais modifiables par l'assistant.
+- Une nouvelle tentative de confirmation ne rejoue jamais une écriture : déjà exécutée → réponse
+  `déjà_exécutée` avec le n° de journal ; échouée ou obsolète → nouvel aperçu exigé ; interrompue
+  (processus arrêté) → reprise possible après 15 min, car l'état « exécutée » est validé dans la même
+  transaction que les écritures.
 
 ## Outils (45)
 
@@ -97,18 +128,36 @@ apparaissent ainsi : `Marie Martin (8) [via IA : Claude Desktop — journal #42]
 **Annuler une action** depuis le journal (bouton *Annuler…*) ou en demandant à l'IA
 (`glpi_rollback_action`) :
 - ce qui a été créé est supprimé, les anciennes valeurs sont remises, ce qui a été mis à la
-  corbeille est restauré, les droits de profil et la configuration reviennent à l'état d'avant ;
+  corbeille est restauré, un lien retiré est recréé, les droits de profil et la configuration
+  reviennent à l'état d'avant ;
 - seuls les champs modifiés par l'IA sont remis : une modification faite à la main entre-temps
   sur un autre champ est conservée ;
-- si un objet a été modifié depuis l'action IA (comparaison des valeurs, pas des dates : un
-  objet modifié puis remis en l'état n'est pas un conflit), l'annulation s'arrête et liste les
-  **conflits** champ par champ (on peut forcer, en connaissance de cause) ;
-- l'annulation est elle-même une action : aperçu, droits revérifiés, tout ou rien, journalisée ;
+- si un objet a été modifié depuis l'action IA (comparaison des valeurs), l'annulation s'arrête et
+  liste les **conflits** champ par champ. On peut forcer (`force=true`) : l'annulation forcée exige
+  alors l'**approbation humaine dans GLPI** ;
+- les conflits sont **revérifiés au moment de l'exécution** : si un technicien modifie un élément
+  entre l'aperçu de l'annulation et sa confirmation, l'annulation est bloquée sans rien modifier ;
+- l'annulation est elle-même une action : aperçu, droits revérifiés, transaction, journalisée ;
 - réservée à l'auteur de l'action ou à un administrateur GLPI.
 
-Ne peut pas être défait : une suppression définitive (purge), les e-mails de notification
-déjà envoyés, les « champs spéciaux » (acteurs ajoutés via `_users_id_…` lors d'une modification).
-Le journal l'indique explicitement pour chaque action.
+Chaque action exécutée indique son **annulabilité** (aussi dans le journal) :
+
+| Annulabilité | Signification |
+|---|---|
+| totale | toutes les écritures en base peuvent être défaites |
+| partielle | certaines parties ne le peuvent pas : elles sont listées (`non_annulable`) |
+| aucune | rien n'est défaisable (ex. suppression définitive) |
+
+Ne peuvent pas être défaits : une suppression définitive (purge) ; les **notifications e-mail**
+générées par la création d'un ticket, d'un suivi, d'une tâche, d'une solution, d'une validation ou
+par la soumission d'un formulaire (une annulation supprime l'objet, pas l'e-mail) ; les « champs
+spéciaux » (acteurs ajoutés via `_users_id_…` lors d'une modification) ; tout effet produit hors de
+la base par GLPI ou un autre plugin (appel à un service externe, fichier écrit). Le journal l'indique
+pour chaque action.
+
+En cas d'échec pendant l'exécution, les écritures en base du lot sont annulées par la transaction ;
+le message d'erreur le dit, et rappelle que les effets hors base éventuellement déjà déclenchés ne
+sont pas couverts.
 
 ---
 
@@ -116,7 +165,9 @@ Le journal l'indique explicitement pour chaque action.
 
 - lire ou écrire un mot de passe, un jeton, une clé (SMTP, LDAP, collecteur, API…) ;
 - toucher aux plugins, aux journaux, à la clé de chiffrement GLPI ;
-- confirmer une action à la place de l'utilisateur (consigne dans chaque aperçu).
+- approuver une action critique : seule une session GLPI de l'utilisateur le peut ;
+- modifier les réglages de GLPI MCP (types d'actions autorisés, approbation, OAuth) ;
+- utiliser un autre profil ou d'autres entités que ceux accordés à son jeton.
 
 
 ---
@@ -127,7 +178,7 @@ Prérequis : GLPI 11.0 → 11.9, PHP ≥ 8.2.
 
 ```bash
 cd /var/www/glpi/plugins            # ou marketplace/
-unzip glpimcp-1.2.0.zip             # crée le dossier glpimcp/
+unzip glpimcp-1.4.0.zip             # crée le dossier glpimcp/
 chown -R www-data:www-data glpimcp
 php /var/www/glpi/bin/console plugin:install glpimcp --username=glpi
 php /var/www/glpi/bin/console plugin:activate glpimcp
@@ -144,8 +195,10 @@ afficher l'adresse du serveur MCP : `https://votre-glpi/plugins/glpimcp/mcp`.
 
 ### Réglages (Configuration > Plugins > GLPI MCP)
 
-- **Confirmation** : toutes les écritures (recommandé) ou seulement les sensibles
-  (suppressions, droits, utilisateurs, entités, règles, configuration, SLA…).
+- **Confirmation** : toutes les écritures (recommandé) ou seulement les sensibles ; en mode
+  « sensibles », les écritures ordinaires sont exécutées sans aperçu préalable.
+- **Approbation humaine dans GLPI** : actions critiques (défaut) ou toutes les actions sensibles.
+  Chaque changement de ces deux réglages est inscrit au journal IA.
 - Durée de validité d'un aperçu, nombre max de résultats.
 - **Types d'actions autorisés pour l'IA**, en plus des droits GLPI (une action doit être
   permise par le profil ET activée ici) ; les outils correspondants sont masqués quand un type
@@ -211,8 +264,25 @@ des clients et OAuth lui-même peuvent être désactivés dans la configuration 
 
 ### 2. Jeton personnel — Claude Code, scripts, clients sans OAuth
 
-Dans GLPI : **Mes préférences > Assistant IA (MCP) > Générer un jeton** (profil + durée).
-Le jeton n'est affiché qu'une fois.
+Dans GLPI : **Mes préférences > Assistant IA (MCP) > Générer un jeton** (profil, entité, sous-entités,
+durée). Le jeton n'est affiché qu'une fois. Les actions qui attendent votre approbation sont listées sur
+cette même page.
+
+### Périmètre d'un jeton
+
+| Élément | Règle |
+|---|---|
+| Profil | Celui choisi à la création (ou au consentement OAuth) ; « profil par défaut » est résolu à la création et figé. `X-GLPI-Profile` n'est accepté que s'il désigne ce profil (sinon HTTP 403) ; `glpi_switch_context` ne change plus de profil. |
+| Entités | L'entité choisie (avec ou sans sous-entités), ou toutes celles que le profil donne au compte. `X-GLPI-Entity` et `glpi_switch_context` choisissent une entité de travail **dans** cette limite ; au-delà : refus explicite (HTTP 403 / erreur). |
+| Droits retirés | Si le compte perd le profil ou l'entité du jeton, le jeton cesse de fonctionner ; s'il perd un droit, l'exécution est refusée à la confirmation. Le périmètre ne s'élargit jamais. |
+| Proposition | Liée au jeton, au profil et aux entités actives de son aperçu : elle ne peut être confirmée qu'avec le même jeton, dans le même contexte. |
+
+**Mise à jour depuis une version antérieure à 1.4.0** : les jetons créés avec « profil par défaut »
+sont figés sur le profil par défaut actuel du compte (ou son unique profil) ; si aucun profil ne peut
+être déterminé, le jeton est désactivé et doit être recréé. Les jetons dont l'entité était vide gardent
+« toutes les entités du profil ». Les propositions en attente au moment de la mise à jour sont retirées
+(il suffit de refaire la demande). Un assistant qui envoyait `X-GLPI-Profile` vers un autre profil
+reçoit désormais une erreur 403 : créer un jeton par profil.
 
 **Claude Code**
 
@@ -240,23 +310,26 @@ claude mcp add --transport http glpi https://votre-glpi/plugins/glpimcp/mcp \
 ## Tests
 
 - **Unitaires** (sans GLPI) : `php tests/unit/run.php`.
-- **De bout en bout**, via le protocole MCP comme un vrai client, contre un GLPI de **test** :
+- **De bout en bout**, via le protocole MCP comme un vrai client, contre un GLPI **jetable** :
 
   ```bash
-  pip install requests
-  export MCP_URL=https://glpi-test/plugins/glpimcp/mcp
-  export TOKEN_ADMIN=gmcp_… TOKEN_TECH=gmcp_… TOKEN_SELFSERVICE=gmcp_…
-  export GLPI_LOGIN=… GLPI_PASSWORD=…        # optionnel : parcours OAuth avec connexion
-  python3 tests/e2e/run_tests.py
+  # GLPI 11.0.12 téléchargé, base dédiée (recréée), plugin, données de test, serveur sur :8080
+  DB_HOST=127.0.0.1 DB_USER=root DB_PASSWORD=root WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_setup.sh
+  WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_run.sh          # -k motif pour un sous-ensemble
   ```
 
-  17 scénarios : authentification, filtrage des outils par profil, droits GLPI, anti-escalade,
-  aperçu/confirmation à usage unique, transaction tout ou rien (échec en cours d'exécution), annulation
-  avec détection de conflit, interrupteurs, moteur de formulaires (titre dynamique, destination
-  conditionnelle), vérification de langue, fusion de logiciels et annulation, projets (tâches, sous-tâches, équipe, annulation), incidents de sécurité si SecIncident est actif, primitives (export paginé
-  sans champ secret, faits, liens d'impact), OAuth (découverte, enregistrement, PKCE, connexion d'un
-  utilisateur déconnecté). Tout ce qui est créé est préfixé `TEST-MCP` puis annulé via le journal.
-- **Intégration continue** : `.github/workflows/tests.yml`.
+  `ci_setup.sh` crée deux entités, un compte à deux profils (Technicien sur E1, Admin plus privilégié)
+  et des jetons au périmètre connu (commande de test `tests/e2e/FixturesCommand.php`, copiée seulement
+  dans l'instance de test). 25 scénarios, avec vérifications en base (`DB_CLI`) en plus des réponses MCP :
+  authentification, filtrage des outils, droits GLPI, anti-escalade, usage unique, **confirmations
+  simultanées (un seul effet)**, **confirmation et annulation simultanées**, **aperçu obsolète refusé sans
+  effet**, **transaction en cas d'échec en cours d'exécution**, **approbation humaine obligatoire** (sans
+  CSRF, par un autre compte, cible modifiée après approbation), **profil fixé au jeton**, **isolation
+  entre entités**, **droits retirés entre aperçu et exécution**, **conflit apparu pendant l'aperçu d'une
+  annulation**, annulation forcée, interrupteurs, formulaires, langue, logiciels, projets, SecIncident
+  (si actif), primitives, OAuth. Tout ce qui est créé est préfixé `TEST-MCP` puis annulé via le journal.
+- **Intégration continue** (`.github/workflows/tests.yml`) : syntaxe PHP 8.2 → 8.4, tests unitaires,
+  traductions, XML du catalogue, puis le job *Bout en bout* (GLPI 11.0.12 + MariaDB 11.4 jetables).
 
 ## Publication dans le catalogue des plugins GLPI
 
