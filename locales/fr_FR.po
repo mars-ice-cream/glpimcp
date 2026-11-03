@@ -898,3 +898,9 @@ msgstr "Annulation depuis le journal"
 
 msgid "Undo an action made by the AI (always with preview and confirmation)"
 msgstr "Annuler une action faite par l'IA (toujours avec aperçu et confirmation)"
+
+msgid "Unchecking a tool also forbids the same operation through the generic tools (create, update, apply operations): unchecking « Open a ticket » prevents creating a ticket with « Create one or more items ». To withdraw a whole domain (all ticket actions, all deletions…), uncheck its action type below instead."
+msgstr "Décocher un outil interdit aussi la même opération par les outils génériques (créer, modifier, appliquer des opérations) : décocher « Ouvrir un ticket » empêche de créer un ticket avec « Créer un ou plusieurs objets ». Pour retirer tout un domaine (toutes les actions sur les tickets, toutes les suppressions…), décochez plutôt son type d'action ci-dessous."
+
+msgid "The same operation is also refused through the generic tools (create, update, apply operations)."
+msgstr "La même opération est aussi refusée par les outils génériques (créer, modifier, appliquer des opérations)."

@@ -8,6 +8,8 @@
 - **Interface en français et en anglais** selon la langue du compte : administration, onglets, approbation,
   titres des outils, types d'action, aperçus, statuts et résumés du journal ; alertes e-mail bilingues.
 - Onglet du profil : seuls les outils accessibles avec les droits GLPI du profil sont proposés.
+- Retirer un outil métier (au profil ou partout) interdit aussi la même opération par les outils génériques
+  (`glpi_create_items`, `glpi_update_items`, `glpi_apply_operations`), y compris à la confirmation ; l'interface l'explique.
 - **Menu Administration > Assistant IA (MCP)** : la page de réglages n'est plus cachée dans Configuration > Plugins.
 - **Outils interdits pour tout le monde** : masqués et refusés quel que soit le profil.
 - **Restrictions par profil** : onglet *Assistant IA (MCP)* sur la fiche profil — outils autorisés et types

@@ -858,6 +858,46 @@ def outils_interdits_et_politique_par_profil():
 
 
 @test
+def outil_metier_retire_pas_de_contournement_par_les_outils_generiques():
+    """Décocher seulement « Ouvrir un ticket » (type Assistance laissé actif) : glpi_create_items et
+    glpi_apply_operations ne doivent pas permettre de créer un ticket ; les autres opérations restent permises."""
+    need("admin", "selfservice")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    prof = lambda tok: int(db(f"SELECT profiles_id FROM glpi_plugin_glpimcp_tokens WHERE id={token_id(tok)}")[0][0])
+    ss, adm = prof(TOK["selfservice"]), prof(TOK["admin"])
+    ticket = {"items": [{"itemtype": "Ticket", "fields": {"name": PREFIX + " contournement", "content": "test"}}]}
+    ok(TOK["selfservice"], "glpi_create_items", ticket)  # témoin : permis tant que l'outil est coché
+    pending = ok(TOK["selfservice"], "glpi_create_items", ticket)["confirmation_id"]
+
+    def restrict(pid, token):
+        tools = sorted(tool_names(token) - {"glpi_ticket_create"})
+        db(f"INSERT INTO glpi_plugin_glpimcp_profilepolicies (profiles_id, tools_mode, tools, denied_categories) VALUES "
+           f"({pid}, 'list', '{json.dumps(tools)}', '[]') ON DUPLICATE KEY UPDATE tools_mode='list', tools=VALUES(tools), denied_categories='[]'")
+    try:
+        restrict(ss, TOK["selfservice"])
+        assert "glpi_ticket_create" not in tool_names(TOK["selfservice"])
+        assert "glpi_create_items" in tool_names(TOK["selfservice"])
+        refused(TOK["selfservice"], "glpi_create_items", ticket, contains="glpi_ticket_create")
+        # Proposition faite avant le retrait : la confirmation est refusée aussi
+        refused(TOK["selfservice"], "glpi_confirm_action", {"confirmation_id": pending}, contains="glpi_ticket_create")
+        # Lot d'opérations (outil générique des programmes) : même refus
+        restrict(adm, TOK["admin"])
+        refused(TOK["admin"], "glpi_apply_operations", {"summary": "contournement", "client": "tests", "operations": [
+            {"op": "add", "itemtype": "Ticket", "input": {"name": PREFIX + " contournement lot", "content": "test"}}]}, contains="glpi_ticket_create")
+        # Ce que l'outil retiré ne couvre pas reste permis par l'outil générique
+        ok(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " lieu permis"}}]})
+        db(f"DELETE FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id IN ({ss}, {adm})")
+        # Interdiction pour tout le monde : même effet
+        set_plugin_config("banned_tools", '["glpi_ticket_create"]')
+        refused(TOK["admin"], "glpi_create_items", ticket, contains="glpi_ticket_create")
+    finally:
+        db(f"DELETE FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id IN ({ss}, {adm})")
+        set_plugin_config("banned_tools", "[]")
+    assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE name LIKE '{PREFIX} contournement%'") == 0, "ticket créé par contournement"
+
+
+@test
 def interface_en_francais_et_en_anglais():
     """Pages d'administration, titres d'outils et libellés envoyés à l'IA dans la langue du compte GLPI."""
     need("admin")

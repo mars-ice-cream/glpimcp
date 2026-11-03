@@ -252,7 +252,7 @@ echo '</div></div>';
 // --- Outils interdits partout -------------------------------------------------
 $banned = Permissions::bannedTools();
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-ban me-2"></i>' . __('Tools forbidden for everyone', 'glpimcp') . '</h3></div><div class="card-body">';
-echo '<p class="text-muted">' . __('A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else.', 'glpimcp') . '</p>';
+echo '<p class="text-muted">' . __('A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else.', 'glpimcp') . ' ' . __('The same operation is also refused through the generic tools (create, update, apply operations).', 'glpimcp') . '</p>';
 echo '<form method="post" action="">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . '<div class="row g-3">';
 foreach (\GlpiPlugin\Glpimcp\ProfilePolicy::toolGroups() as $group => $tools) {
     echo '<div class="col-md-4"><div class="border rounded p-2 h-100"><strong>' . htmlescape($group) . '</strong>';

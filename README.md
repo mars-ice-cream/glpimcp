@@ -232,6 +232,11 @@ la configuration de GLPI.
   des types d'action (y compris par les outils génériques de création et de modification). Exemple :
   un profil Self-Service limité à la recherche, aux tickets et à la base de connaissances.
 
+  **Outil ou type d'action ?** Décocher un outil métier (ex. « Ouvrir un ticket ») interdit aussi la même
+  opération par les outils génériques (créer, modifier, appliquer un lot d'opérations) : pas de
+  contournement. Les autres opérations du domaine restent permises (suivis, tâches…). Pour retirer tout un
+  domaine, décocher son type d'action (ex. « Assistance »).
+
   Ces trois couches (outils interdits, types d'action globaux, politique du profil) ne font que
   restreindre : les droits GLPI du compte s'appliquent toujours. Trois outils restent toujours
   disponibles (qui suis-je, actions en attente, annuler une action en attente). Tout est revérifié au

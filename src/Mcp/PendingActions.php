@@ -47,7 +47,7 @@ final class PendingActions
                 // Quotas (écritures/heure, tickets/heure, client) : un flot d'aperçus est aussi un abus
                 RateLimiter::checkWrite($ctx, $ops, true);
             }
-            Permissions::assertOps($ops, !empty($meta['rollback_of']));
+            Permissions::assertOps($ops, !empty($meta['rollback_of']), $tool);
             $check = Operations::check($ops);
         } catch (ToolException $e) {
             AuditLog::write($ctx, $tool, 'refusé', $summary, ['erreur' => $e->getMessage(), 'operations' => $ops]);
@@ -166,7 +166,7 @@ final class PendingActions
                 throw new ToolException('L\'outil « ' . $tool . ' » qui a préparé cette action n\'est plus autorisé ('
                     . Permissions::toolBlockReason($tool) . '). Rien n\'a été modifié.');
             }
-            Permissions::assertOps($ops, !empty($meta['rollback_of']));
+            Permissions::assertOps($ops, !empty($meta['rollback_of']), $tool);
             $check = Operations::check($ops);
             if (!hash_equals((string) $row['preview_hash'], self::previewHash($check['preview'], Operations::basis($ops)))) {
                 self::finish($claim, 'stale', 'données modifiées depuis l\'aperçu');
@@ -323,7 +323,7 @@ final class PendingActions
         $reservation = null;
         try {
             // Réglages revérifiés à l'exécution (ils ont pu changer entre l'aperçu et la confirmation)
-            Permissions::assertOps($ops, $rollback_of > 0);
+            Permissions::assertOps($ops, $rollback_of > 0, $tool);
             if ($rollback_of === 0) {
                 $reservation = RateLimiter::reserveTickets($ctx, $ops);
             }

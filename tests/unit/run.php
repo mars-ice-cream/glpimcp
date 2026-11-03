@@ -150,6 +150,13 @@ $old = ['tools_mode' => 'list', 'tools' => ['glpi_search'], 'denied_categories' 
 $new = Permissions::mergePolicy($old, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
 check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_search']);
 
+echo "Outils métier ↔ opérations des outils génériques\n";
+check('création de ticket', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'Ticket']), ['glpi_ticket_create']);
+check('suivi', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'ITILFollowup']), ['glpi_ticket_add_followup']);
+check('modification de ticket : pas d\'outil dédié', Permissions::equivalentTools(['op' => 'update', 'itemtype' => 'Ticket']), []);
+check('lieu : pas d\'outil dédié', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'Location']), []);
+check('suppression', Permissions::equivalentTools(['op' => 'delete', 'itemtype' => 'Computer']), ['glpi_delete_items']);
+
 echo "Accès OAuth et politique actuelle du client\n";
 $managed = ['is_active' => 1, 'managed' => 1, 'skip_consent' => 1, 'forced_profiles_id' => 1, 'token_days' => 30];
 $implicit = ['grant_mode' => 'implicit', 'profiles_id' => 1, 'date_creation' => date('Y-m-d H:i:s')];

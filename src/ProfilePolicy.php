@@ -202,6 +202,7 @@ class ProfilePolicy extends CommonDBTM
 
         echo '<h4>' . __('Tools', 'glpimcp') . '</h4>';
         echo '<p class="text-muted">' . __('Uncheck the tools this profile must not use. A tool added by a future version is allowed only if every tool is checked here.', 'glpimcp') . '</p>';
+        echo '<div class="alert alert-info py-2">' . __('Unchecking a tool also forbids the same operation through the generic tools (create, update, apply operations): unchecking « Open a ticket » prevents creating a ticket with « Create one or more items ». To withdraw a whole domain (all ticket actions, all deletions…), uncheck its action type below instead.', 'glpimcp') . '</div>';
         // Seuls les outils auxquels les droits GLPI du profil donnent accès sont proposés
         $available = self::availableFor($profiles_id);
         $hidden = [];

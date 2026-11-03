@@ -337,11 +337,49 @@ final class Permissions
         };
     }
 
+    /** Outils génériques : leurs opérations sont aussi soumises aux outils métier retirés (voir equivalentTools) */
+    public const GENERIC_WRITE_TOOLS = ['glpi_create_items', 'glpi_update_items', 'glpi_apply_operations'];
+
+    /**
+     * Outils métier qui réalisent cette opération. Retirer tous ces outils (au profil, ou partout) interdit
+     * aussi l'opération par les outils génériques : décocher « Ouvrir un ticket » empêche de créer un ticket
+     * avec glpi_create_items. Vide = opération sans outil métier dédié (seul le type d'action la gouverne).
+     *
+     * @return string[]
+     */
+    public static function equivalentTools(array $op): array
+    {
+        $kind = (string) ($op['op'] ?? '');
+        $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
+        if (class_exists(\Toolbox::class, false) && $type !== '') {
+            try {
+                $type = Items::resolveType($type);
+            } catch (ToolException) {
+            }
+        }
+        return match (true) {
+            $kind === 'add' && $type === 'Ticket'                                     => ['glpi_ticket_create'],
+            $kind === 'add' && $type === 'ITILFollowup'                               => ['glpi_ticket_add_followup'],
+            $kind === 'add' && in_array($type, ['TicketTask', 'ChangeTask', 'ProblemTask'], true) => ['glpi_ticket_add_task'],
+            $kind === 'add' && $type === 'ITILSolution'                               => ['glpi_ticket_add_solution'],
+            $kind === 'add' && in_array($type, ['Ticket_User', 'Group_Ticket', 'Supplier_Ticket', 'Change_User', 'Change_Group', 'Problem_User', 'Group_Problem'], true)
+                                                                                      => ['glpi_ticket_assign'],
+            $kind === 'update' && in_array($type, ['TicketValidation', 'ChangeValidation'], true) => ['glpi_validation_answer'],
+            in_array($kind, ['add', 'update'], true) && in_array($type, ['ProjectTask', 'ProjectTaskTeam', 'ProjectTask_Ticket'], true)
+                                                                                      => ['glpi_project_task_add', 'glpi_project_task_update'],
+            $kind === 'form_submit'                                                   => ['glpi_form_submit'],
+            $kind === 'config'                                                        => ['glpi_config_set'],
+            $kind === 'profile_rights'                                                => ['glpi_profile_rights'],
+            $kind === 'delete'                                                        => ['glpi_delete_items'],
+            default                                                                   => [],
+        };
+    }
+
     /**
      * Refuse le lot si un type d'action est désactivé. Une annulation depuis le journal ne dépend que
      * de l'interrupteur « rollback » : elle remet un état antérieur que l'IA avait le droit de modifier.
      */
-    public static function assertOps(array $ops, bool $rollback = false): void
+    public static function assertOps(array $ops, bool $rollback = false, string $tool = ''): void
     {
         if ($rollback) {
             if (!self::enabled('rollback')) {
@@ -355,6 +393,20 @@ final class Permissions
             foreach (self::categoriesOf($op) as $cat) {
                 if (!self::enabled($cat)) {
                     $blocked[$cat] = true;
+                }
+            }
+        }
+        if ($blocked === [] && in_array($tool, self::GENERIC_WRITE_TOOLS, true)) {
+            // Un outil générique ne doit pas rouvrir ce qu'un outil métier retiré interdit
+            foreach ($ops as $op) {
+                $equiv = self::equivalentTools($op);
+                if ($equiv !== [] && array_filter($equiv, [self::class, 'toolAllowed']) === []) {
+                    throw new ToolException(
+                        'Opération refusée : l\'administrateur GLPI a retiré l\'outil « ' . implode(' » / « ', $equiv)
+                        . ' » pour ce profil ou pour tout le monde, et la même opération est interdite par les outils génériques. '
+                        . 'Rien n\'a été modifié.',
+                        ['outils_retirés' => $equiv]
+                    );
                 }
             }
         }
