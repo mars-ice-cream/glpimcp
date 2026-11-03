@@ -130,6 +130,13 @@ final class Permissions
     private static function typeCategory(string $itemtype): string
     {
         $short = ltrim($itemtype, '\\');
+        // Alias (« user », « Utilisateur »…) : même résolution que l'exécution
+        if ($short !== '' && class_exists(\Toolbox::class, false)) {
+            try {
+                $short = Items::resolveType($short);
+            } catch (ToolException) {
+            }
+        }
         return match (true) {
             in_array($short, self::USERS_GROUPS, true)   => 'users_groups',
             in_array($short, self::RIGHTS, true)         => 'rights',

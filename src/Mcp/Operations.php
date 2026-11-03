@@ -478,7 +478,25 @@ final class Operations
     }
 
     /**
-     * État des objets visés par le lot (date de modification, ou empreinte des champs à défaut) :
+     * Types d'objets ramenés à leur classe GLPI (alias « user », « utilisateur »… → User) AVANT toute
+     * classification : interrupteurs, approbation humaine et garde-fous voient le même type que l'exécution.
+     */
+    public static function canonicalize(array $ops): array
+    {
+        foreach ($ops as $i => $op) {
+            if (is_array($op) && isset($op['itemtype']) && is_string($op['itemtype']) && $op['itemtype'] !== '') {
+                try {
+                    $ops[$i]['itemtype'] = Items::resolveType($op['itemtype']);
+                } catch (ToolException) {
+                    // Type inconnu ou interdit : l'aperçu le refusera avec un message clair
+                }
+            }
+        }
+        return $ops;
+    }
+
+    /**
+     * État des objets visés par le lot (empreinte de leurs champs) :
      * fait partie de l'empreinte de l'aperçu, pour qu'une modification faite entre l'aperçu et l'exécution
      * (même invisible dans l'aperçu, ex. une suppression) impose un nouvel aperçu.
      */
@@ -498,7 +516,8 @@ final class Operations
                 $out[$class . '#' . $op['id']] = 'absent';
                 continue;
             }
-            $out[$class . '#' . $op['id']] = $item->fields['date_mod'] ?? hash('sha256', (string) json_encode($item->fields));
+            // Empreinte de TOUS les champs (une date_mod à la seconde ne voit pas deux modifications rapprochées)
+            $out[$class . '#' . $op['id']] = hash('sha256', (string) json_encode($item->fields));
         }
         ksort($out);
         return $out;

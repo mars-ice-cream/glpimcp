@@ -41,6 +41,7 @@ final class PendingActions
     {
         global $DB;
 
+        $ops = Operations::canonicalize($ops);
         try {
             Permissions::assertOps($ops, !empty($meta['rollback_of']));
             $check = Operations::check($ops);
@@ -220,6 +221,28 @@ final class PendingActions
         }
         if (!hash_equals((string) $row['payload_hash'], hash('sha256', (string) $row['payload']))) {
             throw new ToolException('Proposition altérée : refusée.');
+        }
+        // Politique d'approbation revérifiée : si l'administrateur l'a durcie depuis l'aperçu, elle s'applique
+        if ((int) $row['requires_approval'] !== 1) {
+            $payload = json_decode((string) $row['payload'], true) ?? [];
+            $preview = json_decode((string) $row['preview'], true) ?? [];
+            $reasons = Approval::reasons(
+                Operations::canonicalize($payload['ops'] ?? []),
+                $payload['meta'] ?? [],
+                !empty($preview['sensible']),
+                Approval::scope($ctx)
+            );
+            if ($reasons !== []) {
+                global $DB;
+                $DB->update(self::TABLE, [
+                    'requires_approval' => 1,
+                    'approval_reasons'  => self::encode($reasons),
+                    'date_mod'          => date('Y-m-d H:i:s'),
+                ], ['id' => (int) $row['id'], 'status' => 'pending', 'requires_approval' => 0]);
+                $row['requires_approval'] = 1;
+                $row['approved_by'] = 0;
+                $row['approval_reasons'] = self::encode($reasons);
+            }
         }
         if ((int) $row['requires_approval'] === 1) {
             if ((int) $row['approved_by'] === 0) {

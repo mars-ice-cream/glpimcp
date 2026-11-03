@@ -428,6 +428,20 @@ def approbation_humaine_obligatoire_pour_une_purge():
 
 
 @test
+def alias_de_type_meme_classification_que_l_execution():
+    need("admin")
+    # « utilisateur » est résolu en User à l'exécution : il doit être classé comme tel (interrupteur
+    # « Utilisateurs et groupes », approbation humaine), jamais comme un élément ordinaire.
+    err, data = tool(TOK["admin"], "glpi_apply_operations", {"summary": "alias", "client": "tests", "operations": [
+        {"op": "add", "itemtype": "utilisateur", "input": {"name": PREFIX.replace(" ", "-") + "-alias"}}]})
+    if not err:
+        assert data.get("statut") == "en_attente_d_approbation_humaine", f"compte créable sans approbation via un alias : {data}"
+        ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": data["confirmation_id"]})
+    else:
+        assert "Utilisateurs et groupes" in json.dumps(data, ensure_ascii=False), data
+
+
+@test
 def jeton_limite_a_son_profil():
     need_fixtures()
     w = ok(TOK["dual_tech"], "glpi_whoami")
