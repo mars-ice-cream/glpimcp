@@ -181,6 +181,46 @@ final class Permissions
         return true;
     }
 
+    /**
+     * Nouvelle politique d'un profil à partir du formulaire (fonction pure, testable).
+     *
+     * Les cases des outils interdits partout et des types désactivés partout sont grisées, donc jamais
+     * envoyées : leur état propre au profil est conservé tel quel, pour qu'une restriction du profil ne
+     * disparaisse pas en silence quand l'interdiction ou la désactivation globale est levée plus tard.
+     *
+     * @param string[] $checked  outils cochés
+     * @param string[] $kept     types d'action cochés
+     * @param string[] $banned   outils interdits partout
+     * @param string[] $all      tous les outils connus
+     * @param callable(string): bool $globally_enabled
+     * @return array|null null = aucune restriction propre au profil
+     */
+    public static function mergePolicy(?array $old, array $checked, array $kept, array $banned, array $all, callable $globally_enabled): ?array
+    {
+        $prev_allowed = fn(string $t) => $old === null || $old['tools_mode'] === 'all' || in_array($t, $old['tools'], true);
+        $allowed = array_values(array_unique(array_merge(
+            array_intersect($checked, $all),
+            array_filter($banned, fn($t) => in_array($t, $all, true) && $prev_allowed($t))
+        )));
+        $choosable = array_diff($all, self::ALWAYS_ON);
+        // Tout autorisé = aucune restriction d'outil (les outils des versions futures restent alors disponibles)
+        $mode = array_diff($choosable, $allowed) === [] ? 'all' : 'list';
+
+        $denied = [];
+        foreach (array_keys(self::CATEGORIES) as $c) {
+            $is_denied = $globally_enabled($c)
+                ? !in_array($c, $kept, true)
+                : in_array($c, $old['denied_categories'] ?? [], true);
+            if ($is_denied) {
+                $denied[] = $c;
+            }
+        }
+        if ($mode === 'all' && $denied === []) {
+            return null;
+        }
+        return ['tools_mode' => $mode, 'tools' => $mode === 'list' ? array_values(array_diff($allowed, self::ALWAYS_ON)) : [], 'denied_categories' => $denied];
+    }
+
     /** Pourquoi l'outil est indisponible (null s'il l'est) — pour les messages et l'interface */
     public static function toolBlockReason(string $tool): ?string
     {

@@ -117,6 +117,25 @@ check('liste : toujours disponible', Permissions::decideTool('glpi_cancel_action
 check('liste n\'outrepasse pas l\'interdiction', Permissions::decideTool('glpi_search_items', ['glpi_search_items'], $list, $on), false);
 check('noms d\'outils filtrés', Permissions::cleanTools(['glpi_ok', 'rm -rf', 3, 'glpi_ok']), ['glpi_ok']);
 
+echo "Formulaire de politique de profil : états grisés conservés\n";
+$all = ['glpi_whoami', 'glpi_search', 'glpi_get_item', 'glpi_ticket_create'];
+$gl = fn($c) => $c !== 'purge';
+// Outil retiré au profil puis interdit partout : réenregistrer ne doit pas le rendre au profil
+$old = ['tools_mode' => 'list', 'tools' => ['glpi_search', 'glpi_ticket_create'], 'denied_categories' => []];
+$new = Permissions::mergePolicy($old, ['glpi_search', 'glpi_ticket_create'], array_keys(Permissions::CATEGORIES), ['glpi_get_item'], $all, $gl);
+check('outil interdit partout : exclusion du profil conservée', $new['tools_mode'] ?? 'all', 'list');
+check('outil interdit partout : pas dans la liste', in_array('glpi_get_item', $new['tools'] ?? [], true), false);
+// Outil autorisé au profil puis interdit partout : reste autorisé pour le profil (levée de l'interdiction = retour à l'état d'avant)
+$new = Permissions::mergePolicy(null, ['glpi_search', 'glpi_ticket_create'], array_keys(Permissions::CATEGORIES), ['glpi_get_item'], $all, $gl);
+check('aucune restriction propre conservée', $new, null);
+// Type retiré au profil puis désactivé partout : retrait conservé
+$old = ['tools_mode' => 'all', 'tools' => [], 'denied_categories' => ['purge', 'tickets']];
+$kept = array_diff(array_keys(Permissions::CATEGORIES), ['tickets', 'purge']);
+$new = Permissions::mergePolicy($old, $all, $kept, [], $all, $gl);
+check('type désactivé partout : retrait du profil conservé', $new['denied_categories'] ?? [], ['tickets', 'purge']);
+$new = Permissions::mergePolicy(['denied_categories' => []] + $old, $all, $kept, [], $all, $gl);
+check('type désactivé partout : pas de retrait inventé', $new['denied_categories'] ?? [], ['tickets']);
+
 echo "Accès OAuth et politique actuelle du client\n";
 $managed = ['is_active' => 1, 'managed' => 1, 'skip_consent' => 1, 'forced_profiles_id' => 1, 'token_days' => 30];
 $implicit = ['grant_mode' => 'implicit', 'profiles_id' => 1, 'date_creation' => date('Y-m-d H:i:s')];
