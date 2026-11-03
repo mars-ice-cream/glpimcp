@@ -15,7 +15,7 @@ use GlpiPlugin\Glpimcp\Token;
 
 define('PLUGIN_GLPIMCP_VERSION', '1.6.0');
 define('PLUGIN_GLPIMCP_MIN_GLPI', '11.0.0');
-define('PLUGIN_GLPIMCP_MAX_GLPI', '11.99.99');
+define('PLUGIN_GLPIMCP_MAX_GLPI', '12.99.99');
 
 function plugin_version_glpimcp(): array
 {

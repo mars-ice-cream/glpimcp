@@ -23,10 +23,34 @@ jobs:
       - name: XML du catalogue
         run: python3 -c "import xml.dom.minidom,sys; xml.dom.minidom.parse('glpimcp.xml')"
 
+  static:
+    name: Analyse statique (GLPI ${{ matrix.glpi }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        glpi: ['11.0.12', '12.0.1']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, mbstring
+      - name: GLPI ${{ matrix.glpi }} et PHPStan
+        run: |
+          curl -fsSL "https://github.com/glpi-project/glpi/releases/download/${{ matrix.glpi }}/glpi-${{ matrix.glpi }}.tgz" | tar xz -C "$RUNNER_TEMP"
+          curl -fsSL https://github.com/phpstan/phpstan/releases/download/2.1.17/phpstan.phar -o "$RUNNER_TEMP/phpstan.phar"
+      - name: Méthodes, classes et signatures de GLPI
+        run: GLPI_DIR="$RUNNER_TEMP/glpi" php -d memory_limit=2G "$RUNNER_TEMP/phpstan.phar" analyse -c tests/phpstan.neon --no-progress
+
   e2e:
-    name: Bout en bout (GLPI 11 jetable)
+    name: Bout en bout (GLPI ${{ matrix.glpi }} jetable)
     runs-on: ubuntu-latest
     needs: lint-and-unit
+    strategy:
+      fail-fast: false
+      matrix:
+        glpi: ['11.0.12', '12.0.1']
     services:
       mariadb:
         image: mariadb:11.4
@@ -37,7 +61,7 @@ jobs:
           --health-cmd="healthcheck.sh --connect --innodb_initialized"
           --health-interval=5s --health-timeout=5s --health-retries=30
     env:
-      GLPI_VERSION: '11.0.12'
+      GLPI_VERSION: ${{ matrix.glpi }}
       DB_HOST: 127.0.0.1
       DB_USER: root
       DB_PASSWORD: root

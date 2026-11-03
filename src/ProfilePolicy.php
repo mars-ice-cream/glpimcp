@@ -25,7 +25,31 @@ use Session;
  */
 class ProfilePolicy extends CommonDBTM
 {
-    public static $rightname = 'config';
+    // Pas de redéclaration de $rightname : son type diffère entre GLPI 11 (non typé) et 12 (string)
+    public static function canView(): bool
+    {
+        return Session::haveRight('config', UPDATE);
+    }
+
+    public static function canCreate(): bool
+    {
+        return Session::haveRight('config', UPDATE);
+    }
+
+    public static function canUpdate(): bool
+    {
+        return Session::haveRight('config', UPDATE);
+    }
+
+    public static function canDelete(): bool
+    {
+        return Session::haveRight('config', UPDATE);
+    }
+
+    public static function canPurge(): bool
+    {
+        return Session::haveRight('config', UPDATE);
+    }
 
     public static function getTable($classname = null)
     {
@@ -173,7 +197,7 @@ class ProfilePolicy extends CommonDBTM
         echo '<h3 class="card-title"><i class="ti ti-robot me-2"></i>' . __('What the AI assistant can do with this profile', 'glpimcp') . '</h3>';
         echo '<p class="text-muted">' . __('Applies to every AI access (token or OAuth) that uses this profile. It can only restrict: the GLPI rights of the profile and the global settings (Administration > AI assistant (MCP)) always apply.', 'glpimcp') . '</p>';
         echo '<form method="post" action="' . htmlescape($action) . '">';
-        echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+        echo \GlpiPlugin\Glpimcp\Compat::csrfField();
         echo Html::hidden('profiles_id', ['value' => $profiles_id]);
 
         echo '<h4>' . __('Tools', 'glpimcp') . '</h4>';

@@ -163,6 +163,13 @@ final class McpController extends AbstractController
         $auth->user = $user;
         $DB->setTimezoneForUser($user);
         Session::init($auth);
+        if (\GlpiPlugin\Glpimcp\Compat::isGlpi12()) {
+            // GLPI 12 exige une ré-authentification récente pour les objets sensibles (comptes, habilitations,
+            // configuration…) dans les sessions interactives ; son API par jeton en est exemptée. Ce point d'entrée
+            // est lui aussi authentifié par jeton, sans cookie : même traitement. Les actions critiques de l'IA
+            // restent soumises à l'approbation humaine dans GLPI, qui exige, elle, la ré-authentification.
+            $_SESSION['glpi_reauth_until'] = (new \DateTime($_SESSION['glpi_currenttime'] ?? 'now'))->getTimestamp() + 300;
+        }
 
         if (empty($_SESSION['glpiactiveprofile'])) {
             return false;

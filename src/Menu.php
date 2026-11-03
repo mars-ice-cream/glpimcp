@@ -12,8 +12,6 @@ use Session;
 /** Entrée « Administration > Assistant IA (MCP) » */
 class Menu extends CommonGLPI
 {
-    public static $rightname = 'config';
-
     public static function getMenuName()
     {
         return __('AI assistant (MCP)', 'glpimcp');

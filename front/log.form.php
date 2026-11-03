@@ -22,7 +22,7 @@ $me  = (int) Session::getLoginUserID();
 $is_admin = Session::haveRight('config', UPDATE);
 
 if ($log === null || ((int) $log['users_id'] !== $me && !$is_admin)) {
-    Html::displayRightError();
+    throw new \Glpi\Exception\Http\AccessDeniedHttpException();
 }
 
 // --- Exécution de l'annulation (le bouton n'apparaît qu'après affichage de l'aperçu) ---
@@ -115,7 +115,7 @@ if ($log['status'] === 'exécuté' && $undo !== [] && !(int) $log['rolled_back_b
             }
         }
         echo '<form method="post" action="' . htmlescape(LogView::url($id)) . '">';
-        echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+        echo \GlpiPlugin\Glpimcp\Compat::csrfField();
         echo Html::hidden('id', ['value' => $id]);
         echo Html::hidden('force', ['value' => $force ? 1 : 0]);
         echo '<button type="submit" name="rollback" value="1" class="btn btn-warning"><i class="ti ti-arrow-back-up me-1"></i>' . __('Confirm the undo', 'glpimcp') . '</button>';

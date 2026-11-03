@@ -10,11 +10,15 @@ use GlpiPlugin\Glpimcp\Mcp\Permissions;
 use GlpiPlugin\Glpimcp\ProfilePolicy;
 
 Session::checkRight('config', UPDATE);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Réglages de sécurité de l'assistant IA : même exigence que la configuration de GLPI 12
+    \GlpiPlugin\Glpimcp\Compat::requireReauth();
+}
 
 $profiles_id = (int) ($_POST['profiles_id'] ?? 0);
 $profile = new Profile();
 if ($profiles_id <= 0 || !$profile->getFromDB($profiles_id)) {
-    Html::displayErrorAndDie(__('Item not found'));
+    throw new \Glpi\Exception\Http\NotFoundHttpException();
 }
 
 if (isset($_POST['clear'])) {

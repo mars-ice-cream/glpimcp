@@ -3,8 +3,9 @@
 /**
  * Approbation humaine d'une action critique proposée par l'assistant IA.
  *
- * Exige une session GLPI authentifiée (Session::checkLoginUser) ; les POST sont protégés par le jeton CSRF
- * de GLPI (vérifié par le noyau GLPI 11 avant ce script). Seul l'utilisateur pour qui l'assistant agit peut
+ * Exige une session GLPI authentifiée (Session::checkLoginUser) ; les POST sont protégés contre le CSRF par
+ * le noyau GLPI avant ce script (jeton avec GLPI 11, en-têtes Sec-Fetch-Site / Origin avec GLPI 12). Avec
+ * GLPI 12, approuver exige en plus une ré-authentification récente, comme les objets sensibles de GLPI. Seul l'utilisateur pour qui l'assistant agit peut
  * décider. L'approbation est liée par empreinte à la proposition exacte et à son contexte.
  *
  * @license GPL-3.0-or-later
@@ -29,6 +30,10 @@ if ($row !== null && (int) $row['users_id'] !== $me) {
 }
 
 if ($row !== null && isset($_POST['decision'])) {
+    if ($_POST['decision'] === 'approve') {
+        // GLPI 12 : ré-authentification exigée (mot de passe, LDAP, CAS ou TOTP), puis la demande est rejouée
+        \GlpiPlugin\Glpimcp\Compat::requireReauth();
+    }
     try {
         $res = PendingActions::decide($row, $me, $_POST['decision'] === 'approve');
         Session::addMessageAfterRedirect(
@@ -150,7 +155,7 @@ echo '<p class="text-muted small">' . __('Effects outside the GLPI database (e-m
 if ($row['status'] === 'pending' && !$expired && (int) $row['approved_by'] === 0) {
     echo '<form method="post" action="' . htmlescape($self) . '" class="d-flex gap-2 justify-content-end">';
     echo Html::hidden('uuid', ['value' => $uuid]);
-    echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+    echo \GlpiPlugin\Glpimcp\Compat::csrfField();
     echo '<button type="submit" name="decision" value="refuse" class="btn btn-outline-secondary"><i class="ti ti-x me-1"></i>' . __('Refuse', 'glpimcp') . '</button>';
     echo '<button type="submit" name="decision" value="approve" class="btn btn-danger"><i class="ti ti-check me-1"></i>' . __('I have checked and I approve', 'glpimcp') . '</button>';
     echo '</form>';

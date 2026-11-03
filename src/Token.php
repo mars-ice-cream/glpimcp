@@ -25,8 +25,6 @@ class Token extends CommonDBTM
 {
     public const PREFIX = 'gmcp_';
 
-    public static $rightname = '';
-
     public static function getTypeName($nb = 0)
     {
         return _n('MCP token', 'MCP tokens', $nb, 'glpimcp');
@@ -190,7 +188,7 @@ class Token extends CommonDBTM
             if ($row['is_active']) {
                 echo '<form method="post" action="' . htmlescape($action) . '" class="d-inline">';
                 echo Html::hidden('id', ['value' => $row['id']]);
-                echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+                echo \GlpiPlugin\Glpimcp\Compat::csrfField();
                 echo '<button type="submit" name="revoke" class="btn btn-sm btn-outline-danger">' . __('Revoke', 'glpimcp') . '</button>';
                 echo '</form>';
             }
@@ -234,7 +232,7 @@ class Token extends CommonDBTM
                 echo '<option value="' . $d . '"' . ($d === 90 ? ' selected' : '') . '>' . htmlescape($label) . '</option>';
             }
             echo '</select></div>';
-            echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+            echo \GlpiPlugin\Glpimcp\Compat::csrfField();
             echo '<div class="col-auto"><button type="submit" name="generate" class="btn btn-primary"><i class="ti ti-key me-1"></i>' . __('Generate a token', 'glpimcp') . '</button></div>';
             echo '</form>';
         }

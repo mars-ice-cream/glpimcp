@@ -191,7 +191,7 @@ final class OAuthController extends AbstractController
                     echo Html::hidden($k, ['value' => (string) $q[$k]]);
                 }
             }
-            echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+            echo \GlpiPlugin\Glpimcp\Compat::csrfField();
             echo '<div class="row g-2 mb-3"><div class="col-sm-7"><label class="form-label">' . __('Profile used by the assistant', 'glpimcp') . '</label>';
             echo '<select name="profiles_id" class="form-select"' . (ClientPolicy::isManaged($client) ? ' disabled' : '') . '>';
             $active = ClientPolicy::isManaged($client) ? (int) $client['forced_profiles_id'] : (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);

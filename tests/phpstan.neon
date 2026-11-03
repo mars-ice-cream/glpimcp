@@ -1,0 +1,25 @@
+# Analyse statique contre une version donnée de GLPI (appels de méthodes ou classes absentes, signatures).
+#   GLPI_DIR=/chemin/vers/glpi php phpstan.phar analyse -c tests/phpstan.neon
+parameters:
+  level: 0
+  paths:
+    - ../src
+    - ../front
+    - ../hook.php
+    - ../setup.php
+  bootstrapFiles:
+    - %env.GLPI_DIR%/vendor/autoload.php
+    - %env.GLPI_DIR%/src/autoload/constants.php
+  scanDirectories:
+    - %env.GLPI_DIR%/src
+    - %env.GLPI_DIR%/inc
+  excludePaths:
+    - ../src/Console/FixturesCommand.php (?)
+  reportUnmatchedIgnoredErrors: false
+  ignoreErrors:
+    # Plugin SecIncident : optionnel, chargé seulement s'il est installé
+    - '#GlpiPlugin\\Secincident\\#'
+    # Ré-authentification : GLPI 12 seulement (appel protégé par Compat::isGlpi12)
+    - '#Glpi\\Security\\ReAuth\\ReAuthManager#'
+    # Variables globales de GLPI
+    - '#Variable \$(CFG_GLPI|DB|PLUGIN_HOOKS|kernel) might not be defined#'
