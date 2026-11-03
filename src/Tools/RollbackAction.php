@@ -20,7 +20,7 @@ class RollbackAction extends Tool
 
     public function title(): string
     {
-        return 'Annuler une action IA passée';
+        return __('Undo a past AI action', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -52,7 +52,7 @@ class RollbackAction extends Tool
         $result = PendingActions::propose(
             $ctx,
             $this->name(),
-            sprintf("Annulation de l'action IA #%d du %s par %s : %s", $log['id'], $log['date_creation'], getUserName($log['users_id']), $log['summary']),
+            sprintf(__('Undo of AI action #%1$d of %2$s by %3$s: %4$s', 'glpimcp'), $log['id'], $log['date_creation'], getUserName($log['users_id']), $log['summary']),
             $plan['ops'],
             ['rollback_of' => (int) $log['id'], 'force' => !empty($args['force']), 'conflits_acceptés' => $plan['conflits']]
         );

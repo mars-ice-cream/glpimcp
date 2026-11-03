@@ -24,7 +24,7 @@ class FormGet extends Tool
 
     public function title(): string
     {
-        return 'Questions d\'un formulaire';
+        return __('Questions of a form', 'glpimcp');
     }
 
     public function description(): string

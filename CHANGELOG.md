@@ -1,12 +1,27 @@
 # Changelog
 
 ## 1.6.0 — 2026-11-03
+- **Compatibilité GLPI 12** (11.x et 12.x) : CSRF par en-têtes avec GLPI 12, API retirées remplacées,
+  propriétés typées ; ré-authentification de GLPI 12 exigée pour approuver une action critique et pour
+  modifier les réglages de l'assistant ; le point d'entrée MCP (jeton) en est exempté comme l'API de GLPI.
+  CI : tests de bout en bout et analyse statique sur GLPI 11.0.12 et 12.0.1.
+- **Interface en français et en anglais** selon la langue du compte : administration, onglets, approbation,
+  titres des outils, types d'action, aperçus, statuts et résumés du journal ; alertes e-mail bilingues.
+- Onglet du profil : seuls les outils accessibles avec les droits GLPI du profil sont proposés.
+- Retirer un outil métier (au profil ou partout) interdit aussi la même opération par les outils génériques
+  (`glpi_create_items`, `glpi_update_items`, `glpi_apply_operations`), y compris à la confirmation ; l'interface l'explique.
 - **Menu Administration > Assistant IA (MCP)** : la page de réglages n'est plus cachée dans Configuration > Plugins.
 - **Outils interdits pour tout le monde** : masqués et refusés quel que soit le profil.
 - **Restrictions par profil** : onglet *Assistant IA (MCP)* sur la fiche profil — outils autorisés et types
   d'action retirés pour ce profil, appliqués au profil réellement utilisé par le jeton ou l'accès OAuth.
   Ne fait que restreindre ; revérifié à la confirmation (une action préparée avec un outil retiré est
   refusée) ; chaque modification est journalisée.
+- **Clients gérés : retirer une politique coupe les accès qui ne la respectent plus.** Chaque accès OAuth
+  retient s'il a été accordé avec ou sans page de consentement. Retirer le statut « géré » ou le consentement
+  implicite, changer le profil imposé ou raccourcir la durée coupe aussitôt les accès concernés : requêtes
+  MCP refusées (403), rafraîchissement refusé (`invalid_grant`), codes non échangés invalidés. Vérifié à
+  chaque usage, pas seulement à l'enregistrement dans l'interface. Les accès consentis explicitement par
+  l'utilisateur restent valides.
 - Limiteur de débit : une seule requête SQL atomique (`INSERT … ON DUPLICATE KEY UPDATE`) au lieu
   d'`INSERT IGNORE`, qui écrivait un avertissement dans les journaux GLPI à chaque appel.
 - Tests : scénario de bout en bout (interdiction globale, politique de profil, confirmation refusée,

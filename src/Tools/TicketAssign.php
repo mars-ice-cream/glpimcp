@@ -23,7 +23,7 @@ class TicketAssign extends Tool
 
     public function title(): string
     {
-        return 'Attribuer / ajouter un acteur';
+        return __('Assign / add an actor', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -74,6 +74,6 @@ class TicketAssign extends Tool
         if ($ops === []) {
             throw new ToolException('Indique users_id et/ou groups_id.');
         }
-        return PendingActions::propose($ctx, $this->name(), sprintf('Ajout %s sur %s', $args['role'], $parent->getNameID()), $ops);
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Add %1$s on %2$s', 'glpimcp'), $args['role'], $parent->getNameID()), $ops);
     }
 }

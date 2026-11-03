@@ -22,7 +22,7 @@ class SwitchContext extends Tool
 
     public function title(): string
     {
-        return 'Changer d\'entité de travail';
+        return __('Change working entity', 'glpimcp');
     }
 
     public function description(): string

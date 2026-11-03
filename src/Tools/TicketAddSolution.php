@@ -20,7 +20,7 @@ class TicketAddSolution extends Tool
 
     public function title(): string
     {
-        return 'Résoudre un ticket';
+        return __('Solve a ticket', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -61,7 +61,7 @@ class TicketAddSolution extends Tool
             $input['solutiontypes_id'] = (int) $args['solutiontypes_id'];
         }
         $warn = \GlpiPlugin\Glpimcp\Tickets\LanguageCheck::languageWarning($parent, (string) $args['content']);
-        $result = PendingActions::propose($ctx, $this->name(), 'Solution sur ' . $parent->getNameID(), [[
+        $result = PendingActions::propose($ctx, $this->name(), sprintf(__('Solution on %s', 'glpimcp'), $parent->getNameID()), [[
             'op' => 'add', 'itemtype' => 'ITILSolution', 'input' => $input,
         ]], $warn !== null ? ['force_preview' => true] : []);
         // Vérification de langue (comme pour un humain : on répond dans la langue du demandeur)

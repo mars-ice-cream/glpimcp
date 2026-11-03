@@ -22,7 +22,7 @@ class ConfigSet extends Tool
 
     public function title(): string
     {
-        return 'Modifier la configuration générale';
+        return __('Change the general setup', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -67,7 +67,7 @@ class ConfigSet extends Tool
                 $values[$k] = (int) $values[$k];
             }
         }
-        return PendingActions::propose($ctx, $this->name(), (string) ($args['summary'] ?? 'Modification de la configuration'), [[
+        return PendingActions::propose($ctx, $this->name(), (string) ($args['summary'] ?? __('Change of the setup', 'glpimcp')), [[
             'op' => 'config', 'context' => $context, 'values' => $values,
         ]]);
     }

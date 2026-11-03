@@ -77,8 +77,10 @@ final class McpController extends AbstractController
             if ($client !== null && !$client['is_active']) {
                 return new JsonResponse(Server::error(null, -32001, 'Forbidden: ce client IA a été désactivé par l\'administrateur GLPI.'), 403, $headers);
             }
-            if ($client !== null && ClientPolicy::isManaged($client) && (int) $token['profiles_id'] !== (int) $client['forced_profiles_id']) {
-                return new JsonResponse(Server::error(null, -32003, 'Forbidden: accès accordé avant la politique actuelle de ce client IA (profil imposé différent) : reconnectez le connecteur.'), 403, $headers);
+            // Accès qui ne respecte plus la politique actuelle du client : coupé tout de suite, sans attendre son expiration
+            if ($client !== null && ($why = ClientPolicy::grantViolation($client, $token)) !== null) {
+                $GLOBALS['DB']->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['id' => (int) $token['id']]);
+                return new JsonResponse(Server::error(null, -32003, 'Forbidden: accès révoqué (' . $why . ') : reconnectez le connecteur.'), 403, $headers);
             }
         }
         if (!ClientPolicy::ipAllowed($client, ClientPolicy::clientIp($request))) {
@@ -161,6 +163,13 @@ final class McpController extends AbstractController
         $auth->user = $user;
         $DB->setTimezoneForUser($user);
         Session::init($auth);
+        if (\GlpiPlugin\Glpimcp\Compat::isGlpi12()) {
+            // GLPI 12 exige une ré-authentification récente pour les objets sensibles (comptes, habilitations,
+            // configuration…) dans les sessions interactives ; son API par jeton en est exemptée. Ce point d'entrée
+            // est lui aussi authentifié par jeton, sans cookie : même traitement. Les actions critiques de l'IA
+            // restent soumises à l'approbation humaine dans GLPI, qui exige, elle, la ré-authentification.
+            $_SESSION['glpi_reauth_until'] = (new \DateTime($_SESSION['glpi_currenttime'] ?? 'now'))->getTimestamp() + 300;
+        }
 
         if (empty($_SESSION['glpiactiveprofile'])) {
             return false;

@@ -12,6 +12,10 @@ use GlpiPlugin\Glpimcp\Mcp\Permissions;
 use GlpiPlugin\Glpimcp\Mcp\Server;
 
 Session::checkRight('config', UPDATE);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Réglages de sécurité de l'assistant IA : même exigence que la configuration de GLPI 12
+    \GlpiPlugin\Glpimcp\Compat::requireReauth();
+}
 
 if (isset($_POST['update'])) {
     $mode = in_array($_POST['confirm_mode'] ?? '', ['all', 'sensitive'], true) ? $_POST['confirm_mode'] : 'all';
@@ -56,7 +60,7 @@ if (isset($_POST['update_permissions'])) {
     $changes = [];
     foreach ($before as $k => $on) {
         if ((int) $on !== $values['perm_' . $k]) {
-            $changes[] = Permissions::CATEGORIES[$k][0] . ($values['perm_' . $k] ? ' : activé' : ' : désactivé');
+            $changes[] = Permissions::label($k) . ($values['perm_' . $k] ? ' : activé' : ' : désactivé');
         }
     }
     if ($changes !== []) {
@@ -113,16 +117,26 @@ if (isset($_POST['client_policy'])) {
         'date_mod'           => date('Y-m-d H:i:s'),
     ];
     $DB->update('glpi_plugin_glpimcp_oauthclients', $values, ['id' => $cid]);
-    if ($before && ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed)) {
-        // Profil imposé changé : les accès accordés avec un autre profil sont coupés (reconnexion = nouveau profil)
-        $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['oauthclients_id' => $cid, 'NOT' => ['profiles_id' => $profile]]);
-        // … et les codes d'autorisation pas encore échangés sont invalidés
-        $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
+    $cut = 0;
+    if ($before) {
+        // Accès déjà accordés qui ne respectent plus la nouvelle politique (consentement implicite retiré, profil
+        // imposé changé, durée raccourcie) : coupés tout de suite ; ils seraient de toute façon refusés à l'usage
+        $after = array_merge($before, $values);
+        foreach ($DB->request(['FROM' => 'glpi_plugin_glpimcp_tokens', 'WHERE' => ['oauthclients_id' => $cid, 'is_active' => 1]]) as $t) {
+            if (\GlpiPlugin\Glpimcp\OAuth\ClientPolicy::grantViolation($after, $t) !== null) {
+                $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['id' => (int) $t['id']]);
+                $cut++;
+            }
+        }
+        if ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed || (int) $before['skip_consent'] !== $values['skip_consent']) {
+            // Codes d'autorisation pas encore échangés : invalidés
+            $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
+        }
     }
     AuditLog::write(
         new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),
         'client_policy', 'exécuté', 'Politique du client IA « ' . ($before['name'] ?? '#' . $cid) . ' » modifiée',
-        ['avant' => array_intersect_key((array) $before, $values), 'après' => $values]
+        ['avant' => array_intersect_key((array) $before, $values), 'après' => $values, 'accès_coupés' => $cut]
     );
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();
@@ -161,7 +175,6 @@ $cfg = Config::getConfigurationValues('plugin:glpimcp');
 Html::header(__('AI assistant (MCP)', 'glpimcp'), '', 'admin', \GlpiPlugin\Glpimcp\Menu::class);
 
 $endpoint = rtrim($CFG_GLPI['url_base'] ?? '', '/') . '/plugins/glpimcp/mcp';
-$csrf = Session::getNewCSRFToken();
 
 echo '<div class="container-fluid">';
 
@@ -169,7 +182,7 @@ echo '<div class="container-fluid">';
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-robot me-2"></i>GLPI MCP — ' . __('Settings') . '</h3></div><div class="card-body">';
 echo '<p>' . __('MCP server URL', 'glpimcp') . ' : <code>' . htmlescape($endpoint) . '</code></p>';
 echo '<form method="post" action="">';
-echo Html::hidden('_glpi_csrf_token', ['value' => $csrf]);
+echo \GlpiPlugin\Glpimcp\Compat::csrfField();
 echo '<div class="row g-3">';
 echo '<div class="col-md-5"><label class="form-label">' . __('Confirmation of AI changes', 'glpimcp') . '</label>';
 echo '<select name="confirm_mode" class="form-select">';
@@ -224,9 +237,11 @@ echo '</div></div>';
 // --- Types d'actions autorisés ------------------------------------------------
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-shield-lock me-2"></i>' . __('Actions allowed for the AI assistant', 'glpimcp') . '</h3></div><div class="card-body">';
 echo '<p class="text-muted">' . __('These switches come on top of GLPI rights: an action must be allowed by the user\'s profile AND enabled here. Risky actions are disabled by default. Every change is recorded in the AI log.', 'glpimcp') . '</p>';
-echo '<form method="post" action="">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . '<div class="row g-2">';
+echo '<form method="post" action="">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . '<div class="row g-2">';
 $perms = Permissions::all();
 foreach (Permissions::CATEGORIES as $k => [$label, $desc, $default]) {
+    $label = Permissions::label($k);
+    $desc = Permissions::description($k);
     echo '<div class="col-md-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="perm_' . $k . '" value="1" id="perm_' . $k . '"' . ($perms[$k] ? ' checked' : '') . '>';
     echo '<label class="form-check-label" for="perm_' . $k . '"><strong>' . htmlescape($label) . '</strong>' . ($default ? '' : ' <span class="badge bg-orange-lt">' . __('risky', 'glpimcp') . '</span>') . '<br><small class="text-muted">' . htmlescape($desc) . '</small></label></div></div>';
 }
@@ -237,8 +252,8 @@ echo '</div></div>';
 // --- Outils interdits partout -------------------------------------------------
 $banned = Permissions::bannedTools();
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-ban me-2"></i>' . __('Tools forbidden for everyone', 'glpimcp') . '</h3></div><div class="card-body">';
-echo '<p class="text-muted">' . __('A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else.', 'glpimcp') . '</p>';
-echo '<form method="post" action="">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . '<div class="row g-3">';
+echo '<p class="text-muted">' . __('A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else.', 'glpimcp') . ' ' . __('The same operation is also refused through the generic tools (create, update, apply operations).', 'glpimcp') . '</p>';
+echo '<form method="post" action="">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . '<div class="row g-3">';
 foreach (\GlpiPlugin\Glpimcp\ProfilePolicy::toolGroups() as $group => $tools) {
     echo '<div class="col-md-4"><div class="border rounded p-2 h-100"><strong>' . htmlescape($group) . '</strong>';
     foreach ($tools as $name => [$title, $write]) {
@@ -275,12 +290,12 @@ foreach ($clients as $c) {
     echo '<tr><td>' . htmlescape($c['name']) . ($c['is_active'] ? '' : ' <span class="badge bg-red-lt">' . __('Disabled', 'glpimcp') . '</span>') . '</td>';
     echo '<td>' . htmlescape(implode(', ', $hosts)) . '</td><td>' . Html::convDateTime($c['date_creation']) . '</td>';
     echo '<td>' . ($c['last_use'] ? Html::convDateTime($c['last_use']) : '—') . '</td><td>' . (int) $nb . '</td><td>';
-    echo '<form method="post" action="" class="d-inline">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $c['id']]) . Html::hidden('is_active', ['value' => $c['is_active'] ? 0 : 1]);
+    echo '<form method="post" action="" class="d-inline">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . Html::hidden('id', ['value' => $c['id']]) . Html::hidden('is_active', ['value' => $c['is_active'] ? 0 : 1]);
     echo '<button type="submit" name="client_toggle" class="btn btn-sm ' . ($c['is_active'] ? 'btn-outline-danger">' . __('Disable and cut access', 'glpimcp') : 'btn-outline-success">' . __('Enable', 'glpimcp')) . '</button></form>';
     echo ' <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#glpimcp_policy_' . (int) $c['id'] . '">' . __('Company policy', 'glpimcp') . '</button></td></tr>';
     // Politique « client géré par l'entreprise »
     echo '<tr class="collapse' . ($c['managed'] ? ' show' : '') . '" id="glpimcp_policy_' . (int) $c['id'] . '"><td colspan="6" class="bg-light">';
-    echo '<form method="post" action="" class="row g-2 align-items-end p-2">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $c['id']]);
+    echo '<form method="post" action="" class="row g-2 align-items-end p-2">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . Html::hidden('id', ['value' => $c['id']]);
     echo '<div class="col-md-3"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="managed" value="1" id="m' . (int) $c['id'] . '"' . ($c['managed'] ? ' checked' : '') . '><label class="form-check-label" for="m' . (int) $c['id'] . '"><strong>' . __('Managed by the company', 'glpimcp') . '</strong></label></div>';
     echo '<div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="skip_consent" value="1" id="s' . (int) $c['id'] . '"' . ($c['skip_consent'] ? ' checked' : '') . '><label class="form-check-label" for="s' . (int) $c['id'] . '">' . __('No consent page (access granted after GLPI / SSO login)', 'glpimcp') . '</label></div></div>';
     echo '<div class="col-md-2"><label class="form-label">' . __('Imposed profile', 'glpimcp') . '</label><select name="forced_profiles_id" class="form-select form-select-sm"><option value="0">—</option>';
@@ -308,7 +323,7 @@ if (count($suspended) > 0) {
     echo '<table class="table table-sm mb-0"><tbody>';
     foreach ($suspended as $s) {
         echo '<tr><td>' . htmlescape(getUserName($s['users_id'])) . '</td><td>' . htmlescape($s['name']) . '</td><td>' . Html::convDateTime($s['date_suspended']) . '</td><td>' . htmlescape((string) $s['suspended_reason']) . '</td><td>';
-        echo '<form method="post" action="" class="d-inline">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $s['id']]);
+        echo '<form method="post" action="" class="d-inline">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . Html::hidden('id', ['value' => $s['id']]);
         echo '<button type="submit" name="token_reactivate" class="btn btn-sm btn-outline-warning">' . __('Reactivate', 'glpimcp') . '</button></form></td></tr>';
     }
     echo '</tbody></table></div></div>';
@@ -322,7 +337,7 @@ foreach ($tokens as $t) {
     echo '<tr><td>' . htmlescape(getUserName($t['users_id'])) . '</td><td>' . htmlescape($t['name']) . '</td><td><code>' . htmlescape($t['token_hint']) . '</code></td>';
     echo '<td>' . ($t['date_expiration'] ? Html::convDateTime($t['date_expiration']) : __('Never')) . '</td>';
     echo '<td>' . ($t['last_use'] ? Html::convDateTime($t['last_use']) : '—') . '</td><td>';
-    echo '<form method="post" action="" class="d-inline">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . Html::hidden('id', ['value' => $t['id']]);
+    echo '<form method="post" action="" class="d-inline">' . \GlpiPlugin\Glpimcp\Compat::csrfField() . Html::hidden('id', ['value' => $t['id']]);
     echo '<button type="submit" name="revoke" class="btn btn-sm btn-outline-danger">' . __('Revoke', 'glpimcp') . '</button></form></td></tr>';
 }
 if (count($tokens) === 0) {

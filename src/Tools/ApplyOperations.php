@@ -39,7 +39,7 @@ class ApplyOperations extends Tool
 
     public function title(): string
     {
-        return 'Appliquer un lot d\'opérations (primitive)';
+        return __('Apply a batch of operations (primitive)', 'glpimcp');
     }
 
     public function isWrite(): bool

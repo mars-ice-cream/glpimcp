@@ -32,7 +32,7 @@ class SearchItems extends Tool
 
     public function title(): string
     {
-        return 'Rechercher des objets GLPI';
+        return __('Search GLPI items', 'glpimcp');
     }
 
     public function description(): string

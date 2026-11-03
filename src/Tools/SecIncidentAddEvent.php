@@ -25,7 +25,7 @@ class SecIncidentAddEvent extends Tool
 
     public function title(): string
     {
-        return 'Ajouter à la chronologie d\'un incident';
+        return __('Add to an incident timeline', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -119,6 +119,6 @@ class SecIncidentAddEvent extends Tool
             $ops[] = ['op' => 'add', 'itemtype' => TimelineEvent::class, 'input' => $input];
         }
         $ref = $incident->fields['reference'] ?: ('#' . $incident->getID());
-        return PendingActions::propose($ctx, $this->name(), count($ops) . " événement(s) dans la chronologie de l'incident {$ref}", $ops);
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('%1$d event(s) in the timeline of incident %2$s', 'glpimcp'), count($ops), $ref), $ops);
     }
 }

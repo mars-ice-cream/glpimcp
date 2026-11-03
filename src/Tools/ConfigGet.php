@@ -85,7 +85,7 @@ class ConfigGet extends Tool
 
     public function title(): string
     {
-        return 'Lire la configuration générale';
+        return __('Read the general setup', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

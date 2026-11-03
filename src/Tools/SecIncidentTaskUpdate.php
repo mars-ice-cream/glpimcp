@@ -25,7 +25,7 @@ class SecIncidentTaskUpdate extends Tool
 
     public function title(): string
     {
-        return 'Avancer une tâche de remédiation';
+        return __('Progress a remediation task', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -87,6 +87,6 @@ class SecIncidentTaskUpdate extends Tool
                 'result' => ($input['status'] ?? '') === RemediationTask::STATUS_DONE ? 'ok' : 'to_check',
             ]];
         }
-        return PendingActions::propose($ctx, $this->name(), 'Tâche de remédiation « ' . $task->fields['name'] . ' »', $ops);
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Remediation task « %s »', 'glpimcp'), $task->fields['name']), $ops);
     }
 }

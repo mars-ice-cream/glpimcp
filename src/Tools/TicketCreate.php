@@ -21,7 +21,7 @@ class TicketCreate extends Tool
 
     public function title(): string
     {
-        return 'Ouvrir un ticket';
+        return __('Open a ticket', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -92,7 +92,7 @@ class TicketCreate extends Tool
             }
         }
 
-        return PendingActions::propose($ctx, $this->name(), 'Ouverture du ticket « ' . $input['name'] . ' »', [
+        return PendingActions::propose($ctx, $this->name(), sprintf(__('Opening of ticket « %s »', 'glpimcp'), $input['name']), [
             ['op' => 'add', 'itemtype' => 'Ticket', 'input' => $input],
         ]);
     }

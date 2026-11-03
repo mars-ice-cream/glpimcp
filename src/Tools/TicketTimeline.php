@@ -24,7 +24,7 @@ class TicketTimeline extends Tool
 
     public function title(): string
     {
-        return 'Ticket complet avec historique';
+        return __('Full ticket with history', 'glpimcp');
     }
 
     public function description(): string

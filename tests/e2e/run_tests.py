@@ -137,7 +137,32 @@ def glpi_session(login=None, password=None):
     fields.update({"login_name": login, "login_password": password})
     after = s.post(up.urljoin(page.url, form.group(1)), data=fields, timeout=30)
     assert "login_name" not in after.text, f"connexion GLPI refusée pour {login}"
+    s.glpi_password = password
     return s
+
+
+def csrf(text):
+    """Jeton CSRF du formulaire : exigé par GLPI 11, absent avec GLPI 12 (protection par en-têtes Sec-Fetch-Site / Origin)."""
+    tokens = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', text)
+    return {"_glpi_csrf_token": tokens[-1]} if tokens else {}
+
+
+# Requête intersites simulée (GLPI 12 refuse sur l'en-tête, GLPI 11 faute de jeton)
+CROSS_SITE = {"Sec-Fetch-Site": "cross-site", "Origin": "https://attaquant.example"}
+
+
+def reauth_replay(session, r):
+    """GLPI 12 : si la réponse est l'invite de ré-authentification, la passer et rejouer la demande."""
+    if "/ReAuth/Prompt" not in r.url:
+        return r
+    session.reauth_seen = True
+    v = session.post(BASE + "/ReAuth/Verify", data={"user_input": session.glpi_password}, timeout=30)
+    form = re.search(r'<form([^>]*)>(.*?)</form>', v.text, re.S)
+    assert form and "action=" in form.group(1), "ré-authentification refusée"
+    action = re.search(r'action="([^"]+)"', form.group(1)).group(1).replace("&amp;", "&")
+    method = (re.search(r'method="(\w+)"', form.group(1)) or re.search("(post)", "post")).group(1)
+    replay = {m.group(1): m.group(2).replace("&amp;", "&") for m in re.finditer(r'<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"', form.group(2))}
+    return session.request(method.upper(), up.urljoin(v.url, action), data=replay, timeout=30, allow_redirects=True)
 
 
 def approval_page(session, url):
@@ -150,11 +175,15 @@ def approve(session, url, decision="approve", csrf=True):
     page = approval_page(session, url)
     uuid = up.parse_qs(up.urlparse(url).query)["uuid"][0]
     data = {"uuid": uuid, "decision": decision}
+    assert 'name="decision"' in page.text, "formulaire d'approbation absent"
     if csrf:
-        tokens = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)
-        assert tokens, "formulaire d'approbation absent"
-        data["_glpi_csrf_token"] = tokens[-1]
-    return session.post(url.split("?")[0], data=data, timeout=30, allow_redirects=True)
+        data.update(globals()["csrf"](page.text))
+        r = session.post(url.split("?")[0], data=data, timeout=30, allow_redirects=True)
+        if "/ReAuth/Prompt" in r.url:
+            assert decision == "approve", "ré-authentification demandée pour un refus"
+        r = reauth_replay(session, r)
+        return r
+    return session.post(url.split("?")[0], data=data, headers=CROSS_SITE, timeout=30, allow_redirects=True)
 
 
 def pending_row(uuid):
@@ -388,19 +417,19 @@ def confirmation_et_annulation_simultanees():
 def approbation_humaine_obligatoire_pour_une_purge():
     need("admin")
     w = ok(TOK["admin"], "glpi_whoami")
-    if "Supprimer définitivement" in w["types_d_actions_désactivés_par_l_admin"]:
+    if any(x in w["types_d_actions_désactivés_par_l_admin"] for x in ("Supprimer définitivement", "Delete permanently")):
         raise Skip("« Supprimer définitivement » désactivé sur ce GLPI (la CI l'active)")
     r = propose_confirm(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " à purger"}}]})
     lid = r["résultats"][0]["id"]
     journal_ids.remove(r["journal_id"])
     p = ok(TOK["admin"], "glpi_delete_items", {"items": [{"itemtype": "Location", "id": lid, "purge": True}]})
     assert p["statut"] == "en_attente_d_approbation_humaine", p
-    assert any("définitive" in x for x in p["approbation_humaine"]["raisons"]), p
+    assert any("définitive" in x or "Permanent deletion" in x for x in p["approbation_humaine"]["raisons"]), p
     url = p["approbation_humaine"]["url"]
     # Le jeton MCP et le confirmation_id ne suffisent pas
     refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
     s = glpi_session()
-    # Sans jeton CSRF : refusé par GLPI, rien n'est approuvé
+    # Requête intersites (sans jeton CSRF, en-têtes d'un autre site) : refusée par GLPI, rien n'est approuvé
     approve(s, url, csrf=False)
     refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="approbation humaine")
     # Un autre compte connecté à GLPI ne voit ni ne peut approuver la proposition
@@ -408,8 +437,10 @@ def approbation_humaine_obligatoire_pour_une_purge():
         other = approval_page(glpi_session(os.environ["DUAL_LOGIN"], os.environ["DUAL_PASSWORD"]), url)
         assert 'name="decision"' not in other.text, "proposition visible par un autre compte"
     page = approval_page(s, url)
-    assert "à purger" in page.text and "NON" in page.text, "aperçu (cible, irréversibilité) absent de la page d'approbation"
+    assert "à purger" in page.text and re.search(r"NON ?:|NO:", page.text), "aperçu (cible, irréversibilité) absent de la page d'approbation"
     approve(s, url)
+    if os.environ.get("GLPI_VERSION", "").startswith("12"):
+        assert getattr(s, "reauth_seen", False), "GLPI 12 : approbation sans ré-authentification"
     # Modification de la cible après l'approbation : l'approbation ne couvre plus l'état réel
     propose_confirm(TOK["admin"], "glpi_update_items", {"items": [{"itemtype": "Location", "id": lid, "fields": {"comment": "modifié après approbation"}}]})
     refused(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]}, contains="ont changé")
@@ -438,7 +469,7 @@ def alias_de_type_meme_classification_que_l_execution():
         assert data.get("statut") == "en_attente_d_approbation_humaine", f"compte créable sans approbation via un alias : {data}"
         ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": data["confirmation_id"]})
     else:
-        assert "Utilisateurs et groupes" in json.dumps(data, ensure_ascii=False), data
+        assert any(x in json.dumps(data, ensure_ascii=False) for x in ("Utilisateurs et groupes", "Users and groups")), data
 
 
 @test
@@ -564,8 +595,7 @@ def garde_fou_debit_429_puis_suspension():
         # Réactivation par un administrateur (interface GLPI, CSRF) : un nouvel abus doit re-suspendre
         s = glpi_session()
         page = s.get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
-        csrf = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)[-1]
-        s.post(BASE + "/plugins/glpimcp/front/config.form.php", data={"_glpi_csrf_token": csrf, "id": tid, "token_reactivate": "1"}, timeout=30)
+        reauth_replay(s, s.post(BASE + "/plugins/glpimcp/front/config.form.php", data={**csrf(page.text), "id": tid, "token_reactivate": "1"}, timeout=30))
         assert db(f"SELECT is_active FROM glpi_plugin_glpimcp_tokens WHERE id={tid}")[0][0] == "1", "réactivation sans effet"
         assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_counters WHERE k='rej:t{tid}'") == 0, "compteur de refus non remis à zéro"
         for _ in range(8):
@@ -659,12 +689,86 @@ def client_gere_profil_impose_sans_page_de_consentement():
         db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE client_id='{cid}'")
 
 
+def managed_grant(s, cid, redirect):
+    """Accès obtenu par le flux géré sans consentement : (access_token, refresh_token)."""
+    r, verifier = oauth_code_flow(s, cid, redirect)
+    assert r.status_code in (302, 303) and r.headers["Location"].startswith(redirect), (r.status_code, r.text[:300])
+    code = up.parse_qs(up.urlparse(r.headers["Location"]).query)["code"][0]
+    t = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code, "redirect_uri": redirect,
+                      "client_id": cid, "code_verifier": verifier}, timeout=30).json()
+    return t["access_token"], t["refresh_token"]
+
+
+def refresh(cid, rt):
+    return requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "refresh_token", "refresh_token": rt, "client_id": cid}, timeout=30)
+
+
+@test
+def statut_gere_retire_accès_implicites_coupés():
+    """L'admin retire le statut « géré » (ou le consentement implicite) : les accès accordés sans page de
+    consentement sont coupés tout de suite — requêtes MCP, rafraîchissement et codes en attente."""
+    need_fixtures()
+    if not (DB_CLI and FIX.get("P_SELF") and os.environ.get("SELF_LOGIN")):
+        raise Skip("DB_CLI, P_SELF ou SELF_LOGIN/SELF_PASSWORD absents")
+    cid = "gmcpc_e2e_unmanage_" + STAMP
+    redirect = "https://copilot.example.test/redirect"
+    db(f"INSERT INTO glpi_plugin_glpimcp_oauthclients (client_id, name, redirect_uris, origin, is_active, managed, forced_profiles_id, skip_consent, token_days, date_creation) "
+       f"VALUES ('{cid}', 'Copilot E2E retrait', '[\"{redirect}\"]', 'dcr', 1, 1, {FIX['P_SELF']}, 1, 30, NOW())")
+    pk = int(db(f"SELECT id FROM glpi_plugin_glpimcp_oauthclients WHERE client_id='{cid}'")[0][0])
+    form = lambda **kw: {"id": pk, "client_policy": "1", "forced_profiles_id": FIX["P_SELF"], "token_days": 30, **kw}
+    try:
+        s = glpi_session(os.environ["SELF_LOGIN"], os.environ["SELF_PASSWORD"])
+        # 1. Rafraîchissement normal tant que la politique ne change pas
+        at, rt = managed_grant(s, cid, redirect)
+        assert db(f"SELECT grant_mode FROM glpi_plugin_glpimcp_tokens WHERE oauthclients_id={pk} AND is_active=1")[0][0] == "implicit"
+        r = refresh(cid, rt)
+        assert r.status_code == 200, r.text[:200]
+        at, rt = r.json()["access_token"], r.json()["refresh_token"]
+        # Un code délivré avant le changement, pas encore échangé
+        r5, v5 = oauth_code_flow(s, cid, redirect)
+        code5 = up.parse_qs(up.urlparse(r5.headers["Location"]).query)["code"][0]
+
+        # 2. L'administrateur retire le statut « géré » (même profil) par l'interface
+        admin_post("/plugins/glpimcp/front/config.form.php", form())  # managed et skip_consent décochés
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_tokens WHERE oauthclients_id={pk} AND is_active=1") == 0, "accès implicite encore actif"
+        r = rpc(at, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True)
+        assert r.status_code in (401, 403), f"jeton d'accès encore accepté : {r.status_code}"
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        bad = requests.post(BASE + "/plugins/glpimcp/oauth/token", data={"grant_type": "authorization_code", "code": code5, "redirect_uri": redirect,
+                            "client_id": cid, "code_verifier": v5}, timeout=30)
+        assert bad.status_code == 400 and bad.json()["error"] == "invalid_grant", bad.text[:200]
+        # Le client redevient « personnel » : page de consentement, plus d'accès silencieux
+        r6, _ = oauth_code_flow(s, cid, redirect)
+        assert r6.status_code == 200 and "decision" in r6.text, f"accès accordé sans consentement : {r6.status_code}"
+
+        # 3. Même chose sans passer par l'interface (modification directe) : refus à l'usage et au rafraîchissement
+        admin_post("/plugins/glpimcp/front/config.form.php", form(managed="1", skip_consent="1"))
+        at, rt = managed_grant(s, cid, redirect)
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET skip_consent=0 WHERE id={pk}")
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        assert rpc(at, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code in (401, 403)
+
+        # 4. Durée raccourcie par l'administrateur : un accès plus ancien n'est plus rafraîchi
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET skip_consent=1 WHERE id={pk}")
+        at, rt = managed_grant(s, cid, redirect)
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET date_creation=NOW() - INTERVAL 10 DAY WHERE oauthclients_id={pk} AND is_active=1")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET token_days=7 WHERE id={pk}")
+        r = refresh(cid, rt)
+        assert r.status_code == 400 and r.json()["error"] == "invalid_grant", r.text[:200]
+        assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE summary LIKE '%Copilot E2E retrait%'") >= 1, "changement de politique non journalisé"
+    finally:
+        db(f"UPDATE glpi_plugin_glpimcp_tokens SET is_active=0 WHERE oauthclients_id={pk}")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE id={pk}")
+
+
 @test
 def interrupteurs_par_type_d_action():
     need("admin")
     w = ok(TOK["admin"], "glpi_whoami")
     disabled = w["types_d_actions_désactivés_par_l_admin"]
-    if "Utilisateurs et groupes" not in disabled:
+    if not any(x in disabled for x in ("Utilisateurs et groupes", "Users and groups")):
         raise Skip("« Utilisateurs et groupes » activé sur ce GLPI")
     refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Group", "fields": {"name": PREFIX + " groupe"}}]}, contains="désactivée")
 
@@ -685,8 +789,7 @@ def unavailable(token, name, args=None):
 def admin_post(path, data):
     s = glpi_session()
     page = s.get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
-    csrf = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', page.text)[-1]
-    r = s.post(BASE + path, data={"_glpi_csrf_token": csrf, **data}, timeout=30)
+    r = reauth_replay(s, s.post(BASE + path, data={**csrf(page.text), **data}, timeout=30))
     assert r.status_code < 400, (r.status_code, r.text[:300])
     return s, page
 
@@ -703,6 +806,8 @@ def outils_interdits_et_politique_par_profil():
         # Menu Administration > Assistant IA, puis interdiction globale d'un outil (interface, CSRF)
         s, page = admin_post("/plugins/glpimcp/front/config.form.php", {"banned[]": ["glpi_kb_search", "glpi_whoami"], "update_banned": "1"})
         assert "glpimcp/front/config.form.php" in s.get(BASE + "/front/central.php", timeout=30).text, "entrée de menu absente"
+        if os.environ.get("GLPI_VERSION", "").startswith("12"):
+            assert getattr(s, "reauth_seen", False), "GLPI 12 : réglages de sécurité modifiés sans ré-authentification"
         assert "glpi_kb_search" not in tool_names(TOK["selfservice"])
         assert "glpi_kb_search" not in tool_names(TOK["admin"]), "interdiction globale non appliquée à l'admin"
         assert "glpi_whoami" in tool_names(TOK["admin"]), "outil toujours disponible interdit"
@@ -735,6 +840,85 @@ def outils_interdits_et_politique_par_profil():
         admin_post("/plugins/glpimcp/front/config.form.php", {"update_banned": "1"})
     assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}") == 0
     assert tool_names(TOK["selfservice"]) == base, "restrictions non levées"
+    # Onglet du profil : seuls les outils accessibles avec les droits GLPI du profil sont proposés
+    s, _ = admin_post("/plugins/glpimcp/front/config.form.php", {})
+    # GLPI 12 : les profils sont des objets sensibles, ouverts après ré-authentification
+    if "/ReAuth/Prompt" in s.get(BASE + f"/front/profile.form.php?id={ss_profile}", timeout=30).url:
+        s.post(BASE + "/ReAuth/Verify", data={"user_input": s.glpi_password}, timeout=30)
+    tab = lambda pid: s.get(BASE + "/ajax/common.tabs.php", params={"_target": "/front/profile.form.php", "_itemtype": "Profile",
+                            "_glpi_tab": "GlpiPlugin\\Glpimcp\\ProfilePolicy$1", "id": pid}, timeout=30).text
+    ss_tab = tab(ss_profile)
+    assert 'value="glpi_search"' in ss_tab and 'value="glpi_config_set"' not in ss_tab, "outil inaccessible proposé au Self-Service"
+    assert 'value="glpi_config_set"' in tab(4), "outil manquant pour le Super-Admin"
+    # Tout ce qui est affiché coché = aucune restriction (les outils masqués n'en créent pas)
+    shown = sorted(set(re.findall(r'name="tools\[\]" value="([^"]+)"', ss_tab)))
+    admin_post("/plugins/glpimcp/front/profilepolicy.form.php", {"profiles_id": ss_profile, "save": "1", "tools[]": shown,
+               "categories[]": re.findall(r'name="categories\[\]" value="([a-z_]+)"[^>]*checked', ss_tab)})
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id={ss_profile}") == 0, "restriction inventée par les outils masqués"
+
+
+@test
+def outil_metier_retire_pas_de_contournement_par_les_outils_generiques():
+    """Décocher seulement « Ouvrir un ticket » (type Assistance laissé actif) : glpi_create_items et
+    glpi_apply_operations ne doivent pas permettre de créer un ticket ; les autres opérations restent permises."""
+    need("admin", "selfservice")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    prof = lambda tok: int(db(f"SELECT profiles_id FROM glpi_plugin_glpimcp_tokens WHERE id={token_id(tok)}")[0][0])
+    ss, adm = prof(TOK["selfservice"]), prof(TOK["admin"])
+    ticket = {"items": [{"itemtype": "Ticket", "fields": {"name": PREFIX + " contournement", "content": "test"}}]}
+    ok(TOK["selfservice"], "glpi_create_items", ticket)  # témoin : permis tant que l'outil est coché
+    pending = ok(TOK["selfservice"], "glpi_create_items", ticket)["confirmation_id"]
+
+    def restrict(pid, token):
+        tools = sorted(tool_names(token) - {"glpi_ticket_create"})
+        db(f"INSERT INTO glpi_plugin_glpimcp_profilepolicies (profiles_id, tools_mode, tools, denied_categories) VALUES "
+           f"({pid}, 'list', '{json.dumps(tools)}', '[]') ON DUPLICATE KEY UPDATE tools_mode='list', tools=VALUES(tools), denied_categories='[]'")
+    try:
+        restrict(ss, TOK["selfservice"])
+        assert "glpi_ticket_create" not in tool_names(TOK["selfservice"])
+        assert "glpi_create_items" in tool_names(TOK["selfservice"])
+        refused(TOK["selfservice"], "glpi_create_items", ticket, contains="glpi_ticket_create")
+        # Proposition faite avant le retrait : la confirmation est refusée aussi
+        refused(TOK["selfservice"], "glpi_confirm_action", {"confirmation_id": pending}, contains="glpi_ticket_create")
+        # Lot d'opérations (outil générique des programmes) : même refus
+        restrict(adm, TOK["admin"])
+        refused(TOK["admin"], "glpi_apply_operations", {"summary": "contournement", "client": "tests", "operations": [
+            {"op": "add", "itemtype": "Ticket", "input": {"name": PREFIX + " contournement lot", "content": "test"}}]}, contains="glpi_ticket_create")
+        # Ce que l'outil retiré ne couvre pas reste permis par l'outil générique
+        ok(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "Location", "fields": {"name": PREFIX + " lieu permis"}}]})
+        db(f"DELETE FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id IN ({ss}, {adm})")
+        # Interdiction pour tout le monde : même effet
+        set_plugin_config("banned_tools", '["glpi_ticket_create"]')
+        refused(TOK["admin"], "glpi_create_items", ticket, contains="glpi_ticket_create")
+    finally:
+        db(f"DELETE FROM glpi_plugin_glpimcp_profilepolicies WHERE profiles_id IN ({ss}, {adm})")
+        set_plugin_config("banned_tools", "[]")
+    assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE name LIKE '{PREFIX} contournement%'") == 0, "ticket créé par contournement"
+
+
+@test
+def interface_en_francais_et_en_anglais():
+    """Pages d'administration, titres d'outils et libellés envoyés à l'IA dans la langue du compte GLPI."""
+    need("admin")
+    if not DB_CLI:
+        raise Skip("DB_CLI non fourni")
+    uid = ok(TOK["admin"], "glpi_whoami")["utilisateur"]["id"]
+    old = db(f"SELECT IFNULL(language, '-') FROM glpi_users WHERE id={uid}")[0][0]
+    expected = {
+        "fr_FR": ("Outils interdits pour tout le monde", "Qui suis-je dans GLPI ?", "Utilisateurs et groupes"),
+        "en_GB": ("Tools forbidden for everyone", "Who am I in GLPI?", "Users and groups"),
+    }
+    try:
+        for lang, (page_text, title, category) in expected.items():
+            db(f"UPDATE glpi_users SET language='{lang}' WHERE id={uid}")
+            page = glpi_session().get(BASE + "/plugins/glpimcp/front/config.form.php", timeout=30)
+            assert page_text in page.text, f"{lang} : « {page_text} » absent de la page d'administration"
+            titles = {t["name"]: t.get("title") for t in rpc(TOK["admin"], "tools/list")["tools"]}
+            assert titles.get("glpi_whoami") == title, f"{lang} : titre d'outil {titles.get('glpi_whoami')!r}"
+            assert category in ok(TOK["admin"], "glpi_whoami")["types_d_actions_désactivés_par_l_admin"], f"{lang} : libellé de type d'action"
+    finally:
+        db(f"UPDATE glpi_users SET language={'NULL' if old == '-' else repr(old)} WHERE id={uid}")
 
 
 @test
@@ -818,7 +1002,7 @@ def projets_taches_equipe_et_annulation():
     jid = r["journal_id"]
     t1 = next(t["id"] for t in g["tâches"] if t["nom"] == "Phase 1")
     p = ok(TOK["admin"], "glpi_project_task_update", {"id": t1, "remove_users": [me]})
-    assert any(a["action"] == "retirer le lien" for a in p["aperçu"]), p
+    assert any(a["action"] in ("retirer le lien", "remove the link") for a in p["aperçu"]), p
     ok(TOK["admin"], "glpi_cancel_action", {"confirmation_id": p["confirmation_id"]})
     p = ok(TOK["admin"], "glpi_rollback_action", {"log_id": jid})
     ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
@@ -909,9 +1093,8 @@ def oauth_decouverte_dcr_pkce():
     q = up.parse_qs(up.urlparse(after.url).query)
     for k, val in params.items():
         assert q.get(k, [None])[0] == val, f"paramètre OAuth perdu après connexion : {k}"
-    csrf = re.findall(r'name="_glpi_csrf_token" value="([^"]+)"', after.text)[-1]
     prof = re.search(r'name="profiles_id"[^>]*>.*?<option value="(\d+)"', after.text, re.S)
-    data = dict(params, _glpi_csrf_token=csrf, profiles_id=prof.group(1) if prof else "0", days="1", decision="allow")
+    data = dict(params, **csrf(after.text), profiles_id=prof.group(1) if prof else "0", days="1", decision="allow")
     redir = s.post(asm["authorization_endpoint"], data=data, allow_redirects=False, timeout=30)
     rq = up.parse_qs(up.urlparse(redir.headers["Location"]).query)
     assert rq["state"][0] == params["state"]

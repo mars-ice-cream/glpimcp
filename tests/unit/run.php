@@ -17,6 +17,13 @@ spl_autoload_register(function (string $class): void {
         }
     }
 });
+// Traduction GLPI : texte source (anglais) renvoyé tel quel
+if (!function_exists('__')) {
+    function __(string $str, string $domain = 'glpi'): string
+    {
+        return $str;
+    }
+}
 // Constantes GLPI utilisées par les classes testées
 if (!class_exists('Rule')) {
     eval('class Rule { const PATTERN_IS = 0; const PATTERN_IS_NOT = 1; const PATTERN_CONTAIN = 2; const PATTERN_NOT_CONTAIN = 3; const PATTERN_BEGIN = 4; const PATTERN_END = 5; const REGEX_MATCH = 6; const AND_MATCHING = "AND"; const OR_MATCHING = "OR"; }');
@@ -65,7 +72,7 @@ use GlpiPlugin\Glpimcp\Mcp\Approval;
 use GlpiPlugin\Glpimcp\Mcp\Operations;
 check('création ordinaire', Approval::reasons([['op' => 'add', 'itemtype' => 'Computer']], [], false, 'critical'), []);
 check('purge', count(Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], [], true, 'critical')), 1);
-check('droits de profil', Approval::reasons([['op' => 'profile_rights']], [], true, 'critical'), ['Droits des profils']);
+check('droits de profil', Approval::reasons([['op' => 'profile_rights']], [], true, 'critical'), ['Profile rights']);
 check('habilitation', count(Approval::reasons([['op' => 'add', 'itemtype' => 'Profile_User']], [], true, 'critical')), 1);
 check('configuration', count(Approval::reasons([['op' => 'config']], [], true, 'critical')), 1);
 check('annulation simple d\'une création', Approval::reasons([['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]], ['rollback_of' => 3], true, 'critical'), []);
@@ -82,7 +89,7 @@ check('totale', Operations::undoability(['undo' => [['op' => 'delete']], 'irrév
 check('partielle', Operations::undoability(['undo' => [['op' => 'delete']], 'irréversible' => ['Notifications e-mail éventuellement générées pour X']])['niveau'], 'partielle');
 check('aucune', Operations::undoability(['undo' => [], 'irréversible' => ['Suppression définitive de X']])['niveau'], 'aucune');
 check('effets externes', count(Operations::undoability(['undo' => [1], 'irréversible' => ['Notifications e-mail éventuellement générées pour X', 'Champ spécial']])['effets_externes']), 1);
-check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NON'), true);
+check('purge annoncée irréversible', str_starts_with(Operations::undoabilityOf(['op' => 'delete', 'itemtype' => 'Computer', 'purge' => true]), 'NO'), true);
 
 echo "Adresses IP des clients IA\n";
 use GlpiPlugin\Glpimcp\OAuth\ClientPolicy as CP;
@@ -116,6 +123,50 @@ check('liste : outil non coché', Permissions::decideTool('glpi_get_item', [], $
 check('liste : toujours disponible', Permissions::decideTool('glpi_cancel_action', [], $list, $on), true);
 check('liste n\'outrepasse pas l\'interdiction', Permissions::decideTool('glpi_search_items', ['glpi_search_items'], $list, $on), false);
 check('noms d\'outils filtrés', Permissions::cleanTools(['glpi_ok', 'rm -rf', 3, 'glpi_ok']), ['glpi_ok']);
+
+echo "Formulaire de politique de profil : états grisés conservés\n";
+$all = ['glpi_whoami', 'glpi_search', 'glpi_get_item', 'glpi_ticket_create'];
+$gl = fn($c) => $c !== 'purge';
+// Outil retiré au profil puis interdit partout : réenregistrer ne doit pas le rendre au profil
+$old = ['tools_mode' => 'list', 'tools' => ['glpi_search', 'glpi_ticket_create'], 'denied_categories' => []];
+$new = Permissions::mergePolicy($old, ['glpi_search', 'glpi_ticket_create'], array_keys(Permissions::CATEGORIES), ['glpi_get_item'], $all, $gl);
+check('outil interdit partout : exclusion du profil conservée', $new['tools_mode'] ?? 'all', 'list');
+check('outil interdit partout : pas dans la liste', in_array('glpi_get_item', $new['tools'] ?? [], true), false);
+// Outil autorisé au profil puis interdit partout : reste autorisé pour le profil (levée de l'interdiction = retour à l'état d'avant)
+$new = Permissions::mergePolicy(null, ['glpi_search', 'glpi_ticket_create'], array_keys(Permissions::CATEGORIES), ['glpi_get_item'], $all, $gl);
+check('aucune restriction propre conservée', $new, null);
+// Type retiré au profil puis désactivé partout : retrait conservé
+$old = ['tools_mode' => 'all', 'tools' => [], 'denied_categories' => ['purge', 'tickets']];
+$kept = array_diff(array_keys(Permissions::CATEGORIES), ['tickets', 'purge']);
+$new = Permissions::mergePolicy($old, $all, $kept, [], $all, $gl);
+check('type désactivé partout : retrait du profil conservé', $new['denied_categories'] ?? [], ['tickets', 'purge']);
+$new = Permissions::mergePolicy(['denied_categories' => []] + $old, $all, $kept, [], $all, $gl);
+check('type désactivé partout : pas de retrait inventé', $new['denied_categories'] ?? [], ['tickets']);
+
+// Outils non affichés (droits GLPI du profil insuffisants) : état conservé, et pas de restriction inventée
+$new = Permissions::mergePolicy(null, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
+check('outils masqués : aucune restriction inventée', $new, null);
+$old = ['tools_mode' => 'list', 'tools' => ['glpi_search'], 'denied_categories' => []];
+$new = Permissions::mergePolicy($old, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
+check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_search']);
+
+echo "Outils métier ↔ opérations des outils génériques\n";
+check('création de ticket', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'Ticket']), ['glpi_ticket_create']);
+check('suivi', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'ITILFollowup']), ['glpi_ticket_add_followup']);
+check('modification de ticket : pas d\'outil dédié', Permissions::equivalentTools(['op' => 'update', 'itemtype' => 'Ticket']), []);
+check('lieu : pas d\'outil dédié', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'Location']), []);
+check('suppression', Permissions::equivalentTools(['op' => 'delete', 'itemtype' => 'Computer']), ['glpi_delete_items']);
+
+echo "Accès OAuth et politique actuelle du client\n";
+$managed = ['is_active' => 1, 'managed' => 1, 'skip_consent' => 1, 'forced_profiles_id' => 1, 'token_days' => 30];
+$implicit = ['grant_mode' => 'implicit', 'profiles_id' => 1, 'date_creation' => date('Y-m-d H:i:s')];
+check('accès implicite conforme', CP::grantViolation($managed, $implicit), null);
+check('statut géré retiré', CP::grantViolation(['managed' => 0, 'skip_consent' => 0] + $managed, $implicit) !== null, true);
+check('consentement implicite retiré', CP::grantViolation(['skip_consent' => 0] + $managed, $implicit) !== null, true);
+check('accès consenti survit au retrait', CP::grantViolation(['managed' => 0, 'skip_consent' => 0] + $managed, ['grant_mode' => 'consent'] + $implicit), null);
+check('profil imposé changé', CP::grantViolation(['forced_profiles_id' => 2] + $managed, $implicit) !== null, true);
+check('durée raccourcie', CP::grantViolation(['token_days' => 7] + $managed, ['date_creation' => date('Y-m-d H:i:s', time() - 10 * 86400)] + $implicit) !== null, true);
+check('client désactivé', CP::grantViolation(['is_active' => 0] + $managed, $implicit) !== null, true);
 
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);

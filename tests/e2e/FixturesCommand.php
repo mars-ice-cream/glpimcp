@@ -24,14 +24,14 @@ use User;
 
 class FixturesCommand extends AbstractCommand
 {
-    protected function configure()
+    protected function configure(): void
     {
         parent::configure();
         $this->setName('plugins:glpimcp:e2e-fixtures');
         $this->setDescription('Données de test de bout en bout de GLPI MCP (instance de test uniquement)');
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output)
+    protected function execute(InputInterface $input, OutputInterface $output): int
     {
         global $DB;
 

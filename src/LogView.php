@@ -21,6 +21,20 @@ final class LogView
         'annulé'  => 'bg-secondary-lt',
     ];
 
+    /** Statut enregistré (clé française stable) → libellé dans la langue de l'utilisateur */
+    public static function statusLabel(string $status): string
+    {
+        return match ($status) {
+            'exécuté'  => __('executed', 'glpimcp'),
+            'échec'    => __('failed', 'glpimcp'),
+            'refusé'   => __('refused', 'glpimcp'),
+            'annulé'   => __('cancelled', 'glpimcp'),
+            'approuvé' => __('approved', 'glpimcp'),
+            'suspendu' => __('suspended', 'glpimcp'),
+            default    => $status,
+        };
+    }
+
     public static function url(int $id): string
     {
         global $CFG_GLPI;
@@ -51,7 +65,7 @@ final class LogView
             }
             echo '<td>' . htmlescape($log['client'] ?: '—') . '</td>';
             echo '<td><code>' . htmlescape($log['tool']) . '</code></td>';
-            echo '<td><span class="badge ' . $badge . '">' . htmlescape($log['status']) . '</span>';
+            echo '<td><span class="badge ' . $badge . '">' . htmlescape(self::statusLabel((string) $log['status'])) . '</span>';
             if ((int) $log['rolled_back_by']) {
                 echo ' <span class="badge bg-purple-lt">' . sprintf(__('undone (#%d)', 'glpimcp'), (int) $log['rolled_back_by']) . '</span>';
             }

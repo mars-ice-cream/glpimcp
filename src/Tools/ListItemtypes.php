@@ -29,7 +29,7 @@ class ListItemtypes extends Tool
 
     public function title(): string
     {
-        return 'Types d\'objets GLPI disponibles';
+        return __('Available GLPI item types', 'glpimcp');
     }
 
     public function description(): string

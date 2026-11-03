@@ -129,7 +129,7 @@ final class Items
     public static function resolveType(string $itemtype): string
     {
         $raw = trim($itemtype);
-        $key = strtolower(Toolbox::stripslashes_deep(str_replace(['é', 'è', 'ê', ' ', '-', '_'], ['e', 'e', 'e', '', '', ''], $raw)));
+        $key = strtolower(stripslashes(str_replace(['é', 'è', 'ê', ' ', '-', '_'], ['e', 'e', 'e', '', '', ''], $raw)));
         $class = self::ALIASES[$key] ?? $raw;
 
         if (!class_exists($class) || !is_a($class, CommonDBTM::class, true)) {

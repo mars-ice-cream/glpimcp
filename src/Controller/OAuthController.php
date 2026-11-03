@@ -109,14 +109,14 @@ final class OAuthController extends AbstractController
         // (« session expirée ») et ferait passer par une page d'erreur + déconnexion qui ré-encode l'URL.
         if (!Session::getLoginUserID()) {
             if ($request->isMethod('POST')) {
-                return $this->page(fn() => print('<div class="alert alert-warning">Session GLPI expirée : relancez la connexion depuis l\'assistant.</div>'), 401);
+                return $this->page(fn() => print('<div class="alert alert-warning">' . htmlescape(__('GLPI session expired: start the connection again from the assistant.', 'glpimcp')) . '</div>'), 401);
             }
             $target = $request->getPathInfo() . ($request->getQueryString() !== null ? '?' . $request->getQueryString() : '');
             // Double encodage : GLPI applique un rawurldecode() de plus avant de rediriger (sinon %26, %2B… seraient perdus)
             return new RedirectResponse(($CFG_GLPI['root_doc'] ?? '') . '/?redirect=' . rawurlencode(rawurlencode($target)));
         }
         if (Session::getCurrentInterface() === false) {
-            return $this->page(fn() => print('<div class="alert alert-danger">Aucun profil GLPI actif.</div>'), 403);
+            return $this->page(fn() => print('<div class="alert alert-danger">' . htmlescape(__('No active GLPI profile.', 'glpimcp')) . '</div>'), 403);
         }
 
         $q = $request->isMethod('POST') ? $request->request->all() : $request->query->all();
@@ -144,9 +144,10 @@ final class OAuthController extends AbstractController
                 ) . '</div>'), 403);
             }
             $days = (int) ($client['token_days'] ?? 0) > 0 ? (int) $client['token_days'] : 90;
-            if (!empty($client['skip_consent']) || ($request->isMethod('POST') && ($q['decision'] ?? '') === 'allow')) {
+            $implicit = ClientPolicy::grantsImplicitly($client);
+            if ($implicit || ($request->isMethod('POST') && ($q['decision'] ?? '') === 'allow')) {
                 OAuthServer::purgeExpiredCodes();
-                $code = OAuthServer::issueCode($req, $users_id, $forced, $days);
+                $code = OAuthServer::issueCode($req, $users_id, $forced, $days, $implicit);
                 return new RedirectResponse(OAuthServer::redirectWith($req['redirect_uri'], [
                     'code'  => $code,
                     'state' => $req['state'],
@@ -190,7 +191,7 @@ final class OAuthController extends AbstractController
                     echo Html::hidden($k, ['value' => (string) $q[$k]]);
                 }
             }
-            echo Html::hidden('_glpi_csrf_token', ['value' => Session::getNewCSRFToken()]);
+            echo \GlpiPlugin\Glpimcp\Compat::csrfField();
             echo '<div class="row g-2 mb-3"><div class="col-sm-7"><label class="form-label">' . __('Profile used by the assistant', 'glpimcp') . '</label>';
             echo '<select name="profiles_id" class="form-select"' . (ClientPolicy::isManaged($client) ? ' disabled' : '') . '>';
             $active = ClientPolicy::isManaged($client) ? (int) $client['forced_profiles_id'] : (int) ($_SESSION['glpiactiveprofile']['id'] ?? 0);

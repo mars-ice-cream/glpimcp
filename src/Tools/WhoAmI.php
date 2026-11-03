@@ -20,7 +20,7 @@ class WhoAmI extends Tool
 
     public function title(): string
     {
-        return 'Qui suis-je dans GLPI ?';
+        return __('Who am I in GLPI?', 'glpimcp');
     }
 
     public function description(): string
@@ -111,7 +111,7 @@ class WhoAmI extends Tool
                 : 'mode « sensibles » : les écritures ordinaires sont exécutées sans second appel ; les sensibles demandent glpi_confirm_action',
             'approbation_humaine' => \GlpiPlugin\Glpimcp\Mcp\Approval::describeScope($ctx),
             'types_d_actions_désactivés_par_l_admin' => array_values(array_map(
-                fn($k) => \GlpiPlugin\Glpimcp\Mcp\Permissions::CATEGORIES[$k][0],
+                fn($k) => \GlpiPlugin\Glpimcp\Mcp\Permissions::label($k),
                 array_keys(array_filter(\GlpiPlugin\Glpimcp\Mcp\Permissions::all(), fn($on) => !$on))
             )),
         ];

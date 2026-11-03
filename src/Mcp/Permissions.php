@@ -18,22 +18,22 @@ use Config;
  */
 final class Permissions
 {
-    /** clé → [libellé, description, valeur par défaut] */
+    /** clé → [libellé, description, valeur par défaut] (textes sources en anglais, traduits par label() et description()) */
     public const CATEGORIES = [
-        'tickets'      => ['Assistance', "Créer des tickets, ajouter suivis, tâches, solutions, acteurs, répondre aux validations", 1],
-        'form_submit'  => ['Remplir des formulaires', "Soumettre les formulaires du catalogue de services au nom de l'utilisateur", 1],
-        'items'        => ['Créer et modifier des éléments', "Matériel, lieux, catégories, statuts, contrats, entités, calendriers, SLA…", 1],
-        'security'     => ['Incidents de sécurité (SecIncident)', "Déclarer un incident, alimenter sa chronologie et ses IOC, mettre à jour les tâches de remédiation. Jamais de suppression ni de clôture", 0],
-        'projects'     => ['Projets', "Créer et mettre à jour des tâches de projet, leur équipe et leurs liens avec les tickets", 1],
-        'delete'       => ['Mettre à la corbeille', "Envoyer des éléments à la corbeille (restaurables)", 1],
-        'purge'        => ['Supprimer définitivement', "Suppression irréversible (hors annulation d'une action IA)", 0],
-        'forms_design' => ['Concevoir des formulaires', "Créer, fusionner, traduire des formulaires et leurs destinations", 1],
-        'rules'        => ['Règles', "Règles métier des tickets, dictionnaire et catégories de logiciels", 1],
-        'software'     => ['Fusion de logiciels', "Fusionner les logiciels en double du catalogue", 1],
-        'users_groups' => ['Utilisateurs et groupes', "Créer ou modifier des comptes, des groupes et leurs habilitations", 0],
-        'rights'       => ['Droits des profils', "Modifier les droits d'un profil GLPI", 0],
-        'config'       => ['Configuration générale', "Réglages généraux de GLPI (e-mails, sécurité, inventaire…)", 0],
-        'rollback'     => ['Annulation depuis le journal', "Annuler une action faite par l'IA (toujours avec aperçu et confirmation)", 1],
+        'tickets'      => ['Assistance', 'Create tickets, add follow-ups, tasks, solutions, actors, answer approval requests', 1],
+        'form_submit'  => ['Fill in forms', "Submit the forms of the service catalog on the user's behalf", 1],
+        'items'        => ['Create and update items', 'Hardware, locations, categories, statuses, contracts, entities, calendars, SLA…', 1],
+        'security'     => ['Security incidents (SecIncident)', 'Declare an incident, add to its timeline and IOCs, update remediation tasks. Never deletion or closing', 0],
+        'projects'     => ['Projects', 'Create and update project tasks, their team and their links to tickets', 1],
+        'delete'       => ['Move to trash', 'Move items to the trash (can be restored)', 1],
+        'purge'        => ['Delete permanently', 'Irreversible deletion (except undoing an AI action)', 0],
+        'forms_design' => ['Design forms', 'Create, merge, translate forms and their destinations', 1],
+        'rules'        => ['Rules', 'Ticket business rules, dictionary and software categories', 1],
+        'software'     => ['Software merge', 'Merge duplicate software in the catalog', 1],
+        'users_groups' => ['Users and groups', 'Create or update accounts, groups and their authorizations', 0],
+        'rights'       => ['Profile rights', 'Change the rights of a GLPI profile', 0],
+        'config'       => ['General setup', 'General GLPI settings (e-mails, security, inventory…)', 0],
+        'rollback'     => ['Undo from the journal', 'Undo an action made by the AI (always with preview and confirmation)', 1],
     ];
 
     /** Outils masqués quand leur type d'action est désactivé */
@@ -67,6 +67,17 @@ final class Permissions
     private const TICKETS = ['Ticket', 'Change', 'Problem', 'ITILFollowup', 'TicketTask', 'ChangeTask', 'ProblemTask', 'ITILSolution',
         'Ticket_User', 'Group_Ticket', 'Supplier_Ticket', 'TicketValidation', 'ChangeValidation', 'Change_User', 'Change_Group',
         'Problem_User', 'Group_Problem', 'Item_Ticket', 'Document_Item'];
+
+    /** Libellé d'un type d'action, dans la langue de l'utilisateur */
+    public static function label(string $category): string
+    {
+        return isset(self::CATEGORIES[$category]) ? __(self::CATEGORIES[$category][0], 'glpimcp') : $category;
+    }
+
+    public static function description(string $category): string
+    {
+        return isset(self::CATEGORIES[$category]) ? __(self::CATEGORIES[$category][1], 'glpimcp') : '';
+    }
 
     /** Appelé pour chaque requête MCP, une fois le profil du jeton appliqué */
     public static function useProfile(?int $profiles_id): void
@@ -181,6 +192,50 @@ final class Permissions
         return true;
     }
 
+    /**
+     * Nouvelle politique d'un profil à partir du formulaire (fonction pure, testable).
+     *
+     * Les cases des outils interdits partout et des types désactivés partout sont grisées, donc jamais
+     * envoyées : leur état propre au profil est conservé tel quel, pour qu'une restriction du profil ne
+     * disparaisse pas en silence quand l'interdiction ou la désactivation globale est levée plus tard.
+     *
+     * Il en va de même des outils non affichés parce que les droits GLPI du profil n'y donnent pas accès.
+     *
+     * @param string[] $checked  outils cochés
+     * @param string[] $kept     types d'action cochés
+     * @param string[] $banned   outils interdits partout
+     * @param string[] $all      tous les outils connus
+     * @param callable(string): bool $globally_enabled
+     * @param string[]|null $shown outils affichés dans le formulaire (null = tous)
+     * @return array|null null = aucune restriction propre au profil
+     */
+    public static function mergePolicy(?array $old, array $checked, array $kept, array $banned, array $all, callable $globally_enabled, ?array $shown = null): ?array
+    {
+        $prev_allowed = fn(string $t) => $old === null || $old['tools_mode'] === 'all' || in_array($t, $old['tools'], true);
+        $editable = array_diff($shown ?? $all, $banned);
+        $allowed = array_values(array_unique(array_merge(
+            array_intersect($checked, $editable, $all),
+            array_filter(array_diff($all, $editable), fn($t) => $prev_allowed($t))
+        )));
+        $choosable = array_diff($all, self::ALWAYS_ON);
+        // Tout autorisé = aucune restriction d'outil (les outils des versions futures restent alors disponibles)
+        $mode = array_diff($choosable, $allowed) === [] ? 'all' : 'list';
+
+        $denied = [];
+        foreach (array_keys(self::CATEGORIES) as $c) {
+            $is_denied = $globally_enabled($c)
+                ? !in_array($c, $kept, true)
+                : in_array($c, $old['denied_categories'] ?? [], true);
+            if ($is_denied) {
+                $denied[] = $c;
+            }
+        }
+        if ($mode === 'all' && $denied === []) {
+            return null;
+        }
+        return ['tools_mode' => $mode, 'tools' => $mode === 'list' ? array_values(array_diff($allowed, self::ALWAYS_ON)) : [], 'denied_categories' => $denied];
+    }
+
     /** Pourquoi l'outil est indisponible (null s'il l'est) — pour les messages et l'interface */
     public static function toolBlockReason(string $tool): ?string
     {
@@ -192,7 +247,7 @@ final class Permissions
         }
         $cat = self::TOOL_CATEGORIES[$tool] ?? null;
         if ($cat !== null && !self::globallyEnabled($cat)) {
-            return 'type d\'action « ' . self::CATEGORIES[$cat][0] . ' » désactivé';
+            return 'type d\'action « ' . self::label($cat) . ' » désactivé';
         }
         return 'non autorisé pour ce profil';
     }
@@ -282,11 +337,49 @@ final class Permissions
         };
     }
 
+    /** Outils génériques : leurs opérations sont aussi soumises aux outils métier retirés (voir equivalentTools) */
+    public const GENERIC_WRITE_TOOLS = ['glpi_create_items', 'glpi_update_items', 'glpi_apply_operations'];
+
+    /**
+     * Outils métier qui réalisent cette opération. Retirer tous ces outils (au profil, ou partout) interdit
+     * aussi l'opération par les outils génériques : décocher « Ouvrir un ticket » empêche de créer un ticket
+     * avec glpi_create_items. Vide = opération sans outil métier dédié (seul le type d'action la gouverne).
+     *
+     * @return string[]
+     */
+    public static function equivalentTools(array $op): array
+    {
+        $kind = (string) ($op['op'] ?? '');
+        $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
+        if (class_exists(\Toolbox::class, false) && $type !== '') {
+            try {
+                $type = Items::resolveType($type);
+            } catch (ToolException) {
+            }
+        }
+        return match (true) {
+            $kind === 'add' && $type === 'Ticket'                                     => ['glpi_ticket_create'],
+            $kind === 'add' && $type === 'ITILFollowup'                               => ['glpi_ticket_add_followup'],
+            $kind === 'add' && in_array($type, ['TicketTask', 'ChangeTask', 'ProblemTask'], true) => ['glpi_ticket_add_task'],
+            $kind === 'add' && $type === 'ITILSolution'                               => ['glpi_ticket_add_solution'],
+            $kind === 'add' && in_array($type, ['Ticket_User', 'Group_Ticket', 'Supplier_Ticket', 'Change_User', 'Change_Group', 'Problem_User', 'Group_Problem'], true)
+                                                                                      => ['glpi_ticket_assign'],
+            $kind === 'update' && in_array($type, ['TicketValidation', 'ChangeValidation'], true) => ['glpi_validation_answer'],
+            in_array($kind, ['add', 'update'], true) && in_array($type, ['ProjectTask', 'ProjectTaskTeam', 'ProjectTask_Ticket'], true)
+                                                                                      => ['glpi_project_task_add', 'glpi_project_task_update'],
+            $kind === 'form_submit'                                                   => ['glpi_form_submit'],
+            $kind === 'config'                                                        => ['glpi_config_set'],
+            $kind === 'profile_rights'                                                => ['glpi_profile_rights'],
+            $kind === 'delete'                                                        => ['glpi_delete_items'],
+            default                                                                   => [],
+        };
+    }
+
     /**
      * Refuse le lot si un type d'action est désactivé. Une annulation depuis le journal ne dépend que
      * de l'interrupteur « rollback » : elle remet un état antérieur que l'IA avait le droit de modifier.
      */
-    public static function assertOps(array $ops, bool $rollback = false): void
+    public static function assertOps(array $ops, bool $rollback = false, string $tool = ''): void
     {
         if ($rollback) {
             if (!self::enabled('rollback')) {
@@ -303,8 +396,22 @@ final class Permissions
                 }
             }
         }
+        if ($blocked === [] && in_array($tool, self::GENERIC_WRITE_TOOLS, true)) {
+            // Un outil générique ne doit pas rouvrir ce qu'un outil métier retiré interdit
+            foreach ($ops as $op) {
+                $equiv = self::equivalentTools($op);
+                if ($equiv !== [] && array_filter($equiv, [self::class, 'toolAllowed']) === []) {
+                    throw new ToolException(
+                        'Opération refusée : l\'administrateur GLPI a retiré l\'outil « ' . implode(' » / « ', $equiv)
+                        . ' » pour ce profil ou pour tout le monde, et la même opération est interdite par les outils génériques. '
+                        . 'Rien n\'a été modifié.',
+                        ['outils_retirés' => $equiv]
+                    );
+                }
+            }
+        }
         if ($blocked !== []) {
-            $labels = array_map(fn($c) => '« ' . self::CATEGORIES[$c][0] . ' »', array_keys($blocked));
+            $labels = array_map(fn($c) => '« ' . self::label($c) . ' »', array_keys($blocked));
             $by_profile = array_values(array_filter(array_keys($blocked), fn($c) => self::globallyEnabled($c)));
             throw new ToolException(
                 'Action désactivée par l\'administrateur GLPI pour l\'assistant IA : ' . implode(', ', $labels)
@@ -319,7 +426,7 @@ final class Permissions
 
     private static function message(string $cat): string
     {
-        return 'Action désactivée par l\'administrateur GLPI pour l\'assistant IA : « ' . self::CATEGORIES[$cat][0]
+        return 'Action désactivée par l\'administrateur GLPI pour l\'assistant IA : « ' . self::label($cat)
             . ' ». Un administrateur peut l\'activer dans Administration > Assistant IA (MCP).';
     }
 }

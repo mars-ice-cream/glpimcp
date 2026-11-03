@@ -27,7 +27,7 @@ class ExportItems extends Tool
 
     public function title(): string
     {
-        return 'Lecture en masse (primitive)';
+        return __('Bulk read (primitive)', 'glpimcp');
     }
 
     public function description(): string

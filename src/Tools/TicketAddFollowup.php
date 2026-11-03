@@ -20,7 +20,7 @@ class TicketAddFollowup extends Tool
 
     public function title(): string
     {
-        return 'Ajouter un suivi';
+        return __('Add a follow-up', 'glpimcp');
     }
 
     public function isWrite(): bool
@@ -49,7 +49,7 @@ class TicketAddFollowup extends Tool
         $itemtype = (string) ($args['itemtype'] ?? 'Ticket');
         $parent = Items::load($itemtype, (int) self::requireArg($args, 'id'), READ);
         $warn = empty($args['is_private']) ? \GlpiPlugin\Glpimcp\Tickets\LanguageCheck::languageWarning($parent, (string) $args['content']) : null;
-        $result = PendingActions::propose($ctx, $this->name(), sprintf('Suivi %s sur %s', !empty($args['is_private']) ? 'privé' : 'public', $parent->getNameID()), [[
+        $result = PendingActions::propose($ctx, $this->name(), sprintf(!empty($args['is_private']) ? __('Private follow-up on %s', 'glpimcp') : __('Public follow-up on %s', 'glpimcp'), $parent->getNameID()), [[
             'op'       => 'add',
             'itemtype' => 'ITILFollowup',
             'input'    => [

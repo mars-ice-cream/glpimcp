@@ -26,7 +26,7 @@ class SecIncidentGet extends Tool
 
     public function title(): string
     {
-        return 'Incident de sécurité complet';
+        return __('Full security incident', 'glpimcp');
     }
 
     public function isAvailable(Context $ctx): bool

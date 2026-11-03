@@ -35,13 +35,13 @@ cp "$PLUGIN_DIR/tests/e2e/FixturesCommand.php" "$GLPI/plugins/glpimcp/src/Consol
 echo "== Base jetable $DB_NAME"
 "${CONSOLE[@]}" db:install -H "$DB_HOST" -P "$DB_PORT" -d "$DB_NAME" -u "$DB_USER" -p "$DB_PASSWORD" \
   --no-telemetry --force --reconfigure -L en_GB > "$WORK/db_install.log" 2>&1 || { tail -30 "$WORK/db_install.log"; exit 1; }
-"${CONSOLE[@]}" glpi:config:set url_base "http://127.0.0.1:$PORT" > /dev/null
+"${CONSOLE[@]}" config:set url_base "http://127.0.0.1:$PORT" > /dev/null
 
 echo "== Installation du plugin"
 "${CONSOLE[@]}" plugin:install glpimcp --username=glpi
 "${CONSOLE[@]}" plugin:activate glpimcp
 # Instance de test : suppression définitive autorisée pour tester l'approbation humaine
-"${CONSOLE[@]}" glpi:config:set --context=plugin:glpimcp perm_purge 1 > /dev/null
+"${CONSOLE[@]}" config:set --context=plugin:glpimcp perm_purge 1 > /dev/null
 "${CONSOLE[@]}" cache:clear > /dev/null
 
 echo "== Données de test (entités, compte à deux profils, jetons)"
@@ -64,6 +64,7 @@ curl -fs -o /dev/null "http://127.0.0.1:$PORT/" || { tail -30 "$WORK/php-server.
 
 cat >> "$WORK/e2e.env" <<EOF
 MCP_URL=http://127.0.0.1:$PORT/plugins/glpimcp/mcp
+GLPI_VERSION=$GLPI_VERSION
 GLPI_LOGIN=glpi
 GLPI_PASSWORD=glpi
 DUAL_LOGIN=mcpdual

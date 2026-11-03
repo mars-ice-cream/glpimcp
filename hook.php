@@ -219,6 +219,19 @@ function plugin_glpimcp_install(): bool
         ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC;");
     }
 
+    // 1.6.0 : mode d'octroi des accès OAuth (consentement explicite ou implicite d'un client géré),
+    // pour couper les accès implicites quand l'administrateur retire ce mode
+    foreach (['glpi_plugin_glpimcp_tokens', 'glpi_plugin_glpimcp_oauthcodes'] as $t) {
+        if (!$DB->fieldExists($t, 'grant_mode')) {
+            $DB->doQuery("ALTER TABLE `{$t}` ADD `grant_mode` varchar(10) NOT NULL DEFAULT 'consent'");
+            if ($t === 'glpi_plugin_glpimcp_tokens') {
+                // Accès existants des clients actuellement gérés sans consentement : comptés comme implicites (prudent)
+                $DB->doQuery("UPDATE `glpi_plugin_glpimcp_tokens` t JOIN `glpi_plugin_glpimcp_oauthclients` c ON c.id = t.oauthclients_id"
+                    . " SET t.grant_mode = 'implicit' WHERE c.managed = 1 AND c.skip_consent = 1");
+            }
+        }
+    }
+
     // 1.6.0 : politique de l'assistant IA par profil GLPI (outils autorisés, types d'action retirés)
     if (!$DB->tableExists('glpi_plugin_glpimcp_profilepolicies')) {
         $DB->doQuery("CREATE TABLE `glpi_plugin_glpimcp_profilepolicies` (
