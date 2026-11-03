@@ -58,7 +58,7 @@ check('règle', Permissions::categoriesOf(['op' => 'add', 'itemtype' => 'RuleCri
 check('formulaire', Permissions::categoriesOf(['op' => 'form_build']), ['forms_design']);
 check('config', Permissions::categoriesOf(['op' => 'config']), ['config']);
 check('fusion logiciels', Permissions::categoriesOf(['op' => 'software_merge']), ['software']);
-check('défauts risqués désactivés', array_keys(array_filter(Permissions::defaults(), fn($v) => $v === 0)), ['perm_purge', 'perm_users_groups', 'perm_rights', 'perm_config']);
+check('défauts risqués désactivés', array_keys(array_filter(Permissions::defaults(), fn($v) => $v === 0)), ['perm_security', 'perm_purge', 'perm_users_groups', 'perm_rights', 'perm_config']);
 
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);

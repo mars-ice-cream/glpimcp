@@ -105,6 +105,8 @@ final class Items
     private const FORBIDDEN_TYPES = [
         'Plugin', 'Log', 'Config', 'CronTaskLog', 'APIClient', 'AuthLDAP', 'AuthMail',
         'Glpi\\OAuth\\AccessToken', 'Glpi\\OAuth\\Client', 'OAuthClient', 'Glpi\\System\\Requirement',
+        // SecIncident : journal d'audit chaîné et registre des preuves, jamais touchés par l'IA
+        'GlpiPlugin\\Secincident\\AuditLog', 'GlpiPlugin\\Secincident\\Evidence',
     ];
 
     /** Champs jamais lisibles ni modifiables via l'IA. */

@@ -9,10 +9,12 @@ namespace GlpiPlugin\Glpimcp\Controller;
 use Auth;
 use Glpi\Controller\AbstractController;
 use Glpi\Http\Firewall;
+use Glpi\Plugin\Hooks;
 use Glpi\Security\Attribute\SecurityStrategy;
 use GlpiPlugin\Glpimcp\Mcp\Context;
 use GlpiPlugin\Glpimcp\Mcp\Server;
 use GlpiPlugin\Glpimcp\Token;
+use Plugin;
 use Session;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -153,6 +155,10 @@ final class McpController extends AbstractController
 
         Session::loadLanguage($_SESSION['glpilanguage'] ?? '');
         $_SESSION['glpi_use_mode'] = Session::NORMAL_MODE;
+        // Les plugins qui ajustent les droits du profil actif (ex. SecIncident : restriction au groupe
+        // sécurité) le font sur ce crochet ; la session MCP étant ouverte après leur initialisation,
+        // on le déclenche ici pour que leurs restrictions s'appliquent aussi à l'assistant IA.
+        Plugin::doHook(Hooks::CHANGE_PROFILE);
         return true;
     }
 }

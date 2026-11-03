@@ -69,6 +69,13 @@ final class Server
             Tools\ProjectMyTasks::class,
             Tools\ProjectTaskAdd::class,
             Tools\ProjectTaskUpdate::class,
+
+            Tools\SecIncidentList::class,
+            Tools\SecIncidentGet::class,
+            Tools\SecIncidentDeclare::class,
+            Tools\SecIncidentAddEvent::class,
+            Tools\SecIncidentAddIocs::class,
+            Tools\SecIncidentTaskUpdate::class,
             // Formulaires (catalogue de services)
             Tools\FormList::class,
             Tools\FormGet::class,

@@ -117,6 +117,7 @@ final class PendingActions
         if ($rollback_of > 0 && $log_id > 0) {
             AuditLog::markRolledBack($rollback_of, $log_id);
         }
+        \GlpiPlugin\Glpimcp\Integrations\SecIncident::afterRun($ctx, $summary, $ops, $results, $log_id, $rollback_of);
 
         $out = [
             'statut'      => 'exécuté',

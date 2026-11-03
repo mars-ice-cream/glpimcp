@@ -21,6 +21,7 @@ final class Permissions
         'tickets'      => ['Assistance', "Créer des tickets, ajouter suivis, tâches, solutions, acteurs, répondre aux validations", 1],
         'form_submit'  => ['Remplir des formulaires', "Soumettre les formulaires du catalogue de services au nom de l'utilisateur", 1],
         'items'        => ['Créer et modifier des éléments', "Matériel, lieux, catégories, statuts, contrats, entités, calendriers, SLA…", 1],
+        'security'     => ['Incidents de sécurité (SecIncident)', "Déclarer un incident, alimenter sa chronologie et ses IOC, mettre à jour les tâches de remédiation. Jamais de suppression ni de clôture", 0],
         'projects'     => ['Projets', "Créer et mettre à jour des tâches de projet, leur équipe et leurs liens avec les tickets", 1],
         'delete'       => ['Mettre à la corbeille', "Envoyer des éléments à la corbeille (restaurables)", 1],
         'purge'        => ['Supprimer définitivement', "Suppression irréversible (hors annulation d'une action IA)", 0],
@@ -45,6 +46,8 @@ final class Permissions
         'glpi_rollback_action' => 'rollback',
         'glpi_delete_items' => 'delete',
         'glpi_project_task_add' => 'projects', 'glpi_project_task_update' => 'projects',
+        'glpi_secincident_declare' => 'security', 'glpi_secincident_add_event' => 'security',
+        'glpi_secincident_add_iocs' => 'security', 'glpi_secincident_task_update' => 'security',
     ];
 
     private const USERS_GROUPS = ['User', 'Group', 'Group_User', 'Profile_User', 'UserEmail', 'Entity_User'];
@@ -133,6 +136,7 @@ final class Permissions
             in_array($short, self::TICKETS, true)        => 'tickets',
             str_starts_with($short, 'Rule')              => 'rules',
             in_array($short, self::PROJECTS, true)       => 'projects',
+            str_starts_with($short, 'GlpiPlugin\\Secincident\\') => 'security',
             str_starts_with($short, 'Glpi\\Form\\')      => 'forms_design',
             $short === 'Software'                        => 'items',
             default                                      => 'items',
@@ -151,6 +155,7 @@ final class Permissions
             }
             return;
         }
+        \GlpiPlugin\Glpimcp\Integrations\SecIncident::assertOps($ops);
         $blocked = [];
         foreach ($ops as $op) {
             foreach (self::categoriesOf($op) as $cat) {

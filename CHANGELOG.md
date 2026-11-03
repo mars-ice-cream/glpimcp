@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.3.0 — 2026-11-03
+- **Intégration SecIncident** (si le plugin est actif) : `glpi_secincident_list`, `glpi_secincident_get`,
+  `glpi_secincident_declare`, `glpi_secincident_add_event`, `glpi_secincident_add_iocs`,
+  `glpi_secincident_task_update`. Mêmes contrôles que l'interface de SecIncident ; écriture limitée et désactivée
+  par défaut (nouvel interrupteur « Incidents de sécurité ») ; suppression, clôture et équipe interdites à l'IA,
+  y compris via les outils génériques ; entrée `ai_assistant` dans le journal d'audit chaîné de SecIncident ;
+  contenu des incidents renvoyé comme donnée non fiable.
+- Les sessions de l'assistant déclenchent le crochet `change_profile` : les plugins qui ajustent les droits du
+  profil actif (ex. restriction de SecIncident au groupe sécurité) s'appliquent aussi à l'IA.
+
 ## 1.2.0 — 2026-11-02
 - **Projets** : `glpi_project_list` (état, avancement, retard, « mes projets »), `glpi_project_get` (synthèse, équipe,
   tâches en arbre, jalons, sous-projets, tickets et éléments liés), `glpi_project_my_tasks` (ma charge, retards),

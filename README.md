@@ -20,7 +20,7 @@ Quatre principes :
 4. **L'administrateur choisit ce que l'IA a le droit de faire**, par type d'action, en plus des
    droits GLPI ; les actions à risque sont désactivées par défaut.
 
-## Outils (39)
+## Outils (45)
 
 | Domaine | Outils |
 |---|---|
@@ -32,6 +32,7 @@ Quatre principes :
 | Journal | `glpi_ai_history`, `glpi_rollback_action` |
 | Assistance | `glpi_ticket_create`, `glpi_ticket_get` (chronologie), `glpi_ticket_add_followup`, `glpi_ticket_add_task`, `glpi_ticket_add_solution`, `glpi_ticket_add_actor`, `glpi_validation_answer`, `glpi_kb_search` |
 | Projets | `glpi_project_list`, `glpi_project_get`, `glpi_project_my_tasks`, `glpi_project_task_add`, `glpi_project_task_update` |
+| Incidents de sécurité* | `glpi_secincident_list`, `glpi_secincident_get`, `glpi_secincident_declare`, `glpi_secincident_add_event`, `glpi_secincident_add_iocs`, `glpi_secincident_task_update` |
 | Formulaires | `glpi_form_list`, `glpi_form_get`, `glpi_form_question_types`, `glpi_form_submit` (remplissage conversationnel) |
 | Configuration | `glpi_config_get`, `glpi_config_set`, `glpi_profile_rights`, `glpi_rule_list` |
 | Primitives | `glpi_export`, `glpi_system_facts`, `glpi_apply_operations` (voir ci-dessous) |
@@ -41,6 +42,28 @@ du demandeur sont signalés dans l'aperçu ; l'assistant demande alors dans quel
 
 Les outils affichés dépendent du profil (un *Self-Service* ne voit ni la configuration ni les primitives)
 et des types d'actions activés par l'administrateur.
+
+\* Seulement si le plugin [SecIncident](https://github.com/mars-ice-cream/secincident) est installé et actif.
+
+### Incidents de sécurité (plugin SecIncident)
+
+Quand SecIncident est actif, l'assistant peut suivre les incidents de sécurité avec **exactement les contrôles
+de l'interface** : droits du plugin, cloisonnement « mes incidents » (responsable, rédacteur, groupe, équipe),
+restriction optionnelle au groupe sécurité (appliquée aussi aux sessions de l'assistant).
+
+- **Lecture** : liste (phase, gravité, échéances CNIL 72 h / ANSSI 24 h-72 h-1 mois dépassées ou proches),
+  fiche complète (qualification, impacts, MITRE ATT&CK, RGPD, NIS2, équipe, éléments liés, plan de remédiation,
+  chronologie, IOC). Chaque consultation est tracée dans le journal d'audit de SecIncident.
+- **Écriture limitée**, désactivée par défaut (*Types d'actions autorisés > Incidents de sécurité*) : déclarer un
+  incident (avec éléments touchés et premiers IOC), alimenter la chronologie, ajouter des IOC (doublons écartés),
+  avancer une tâche de remédiation. Aperçu, confirmation et annulation comme partout.
+- **Jamais via l'IA**, même avec les outils génériques : suppression ou restauration, clôture d'un incident,
+  modification de l'équipe (qui y a accès), procédures et catégories, journal d'audit et registre des preuves.
+- **Traçabilité** : en plus du journal IA de GLPI MCP, chaque action de l'assistant ajoute une entrée
+  `ai_assistant` (canal, client IA, n° du journal IA) dans le journal d'audit chaîné de SecIncident ; les
+  événements et IOC créés portent la source `mcp`.
+- **Injection de consignes** : tout texte issu d'un incident (mail de phishing collé, commande, données EDR) est
+  renvoyé encadré `«««DONNÉE NON FIABLE»»» … «««FIN»»»`, avec la consigne de l'analyser sans jamais l'exécuter.
 
 ### Primitives pour les programmes
 
@@ -227,10 +250,10 @@ claude mcp add --transport http glpi https://votre-glpi/plugins/glpimcp/mcp \
   python3 tests/e2e/run_tests.py
   ```
 
-  16 scénarios : authentification, filtrage des outils par profil, droits GLPI, anti-escalade,
+  17 scénarios : authentification, filtrage des outils par profil, droits GLPI, anti-escalade,
   aperçu/confirmation à usage unique, transaction tout ou rien (échec en cours d'exécution), annulation
   avec détection de conflit, interrupteurs, moteur de formulaires (titre dynamique, destination
-  conditionnelle), vérification de langue, fusion de logiciels et annulation, projets (tâches, sous-tâches, équipe, annulation), primitives (export paginé
+  conditionnelle), vérification de langue, fusion de logiciels et annulation, projets (tâches, sous-tâches, équipe, annulation), incidents de sécurité si SecIncident est actif, primitives (export paginé
   sans champ secret, faits, liens d'impact), OAuth (découverte, enregistrement, PKCE, connexion d'un
   utilisateur déconnecté). Tout ce qui est créé est préfixé `TEST-MCP` puis annulé via le journal.
 - **Intégration continue** : `.github/workflows/tests.yml`.
