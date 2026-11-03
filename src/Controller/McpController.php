@@ -168,6 +168,8 @@ final class McpController extends AbstractController
 
         // Profil et entités : le périmètre accordé au jeton est une limite (refus explicite au-delà)
         TokenScope::apply($token, $request->headers->get('X-GLPI-Profile'), $request->headers->get('X-GLPI-Entity'));
+        // Outils et types d'action : politique du profil GLPI réellement utilisé par ce jeton
+        \GlpiPlugin\Glpimcp\Mcp\Permissions::useProfile((int) ($_SESSION['glpiactiveprofile']['id'] ?? 0));
 
         $lang = $request->headers->get('Accept-Language');
         if ($lang && empty($user->fields['language'])) {

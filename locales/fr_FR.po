@@ -443,3 +443,73 @@ msgstr "Réactiver"
 
 msgid "This assistant is reserved by your administrator to accounts with the profile \"%s\". Your account does not have it."
 msgstr "Cet assistant est réservé par votre administrateur aux comptes ayant le profil « %s ». Votre compte ne l'a pas."
+
+# 1.6.0 — outils interdits et politique par profil
+msgid "%d tools allowed"
+msgstr "%d outils autorisés"
+
+msgid "A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else."
+msgstr "Un outil coché est masqué pour tous les assistants IA et refusé, quel que soit le profil. Cette interdiction passe avant tout le reste."
+
+msgid "AI assistant"
+msgstr "Assistant IA"
+
+msgid "Action types"
+msgstr "Types d'action"
+
+msgid "Always available"
+msgstr "Toujours disponibles"
+
+msgid "Applies to every AI access (token or OAuth) that uses this profile. It can only restrict: the GLPI rights of the profile and the global settings (Administration > AI assistant (MCP)) always apply."
+msgstr "S'applique à tout accès IA (jeton ou OAuth) qui utilise ce profil. Ce réglage ne peut que restreindre : les droits GLPI du profil et les réglages globaux (Administration > Assistant IA (MCP)) s'appliquent toujours."
+
+msgid "Configure"
+msgstr "Configurer"
+
+msgid "Generic changes (subject to the action types)"
+msgstr "Modifications génériques (soumises aux types d'action)"
+
+msgid "No restriction"
+msgstr "Aucune restriction"
+
+msgid "Open a profile to choose the tools and action types the AI assistant may use with it (tab « AI assistant (MCP) » of the profile)."
+msgstr "Ouvrez un profil pour choisir les outils et les types d'action que l'assistant IA peut utiliser avec lui (onglet « Assistant IA (MCP) » du profil)."
+
+msgid "Reading and discovery"
+msgstr "Lecture et découverte"
+
+msgid "Remove the restrictions of this profile"
+msgstr "Retirer les restrictions de ce profil"
+
+msgid "Restrictions per profile"
+msgstr "Restrictions par profil"
+
+msgid "Tools"
+msgstr "Outils"
+
+msgid "Tools forbidden for everyone"
+msgstr "Outils interdits pour tout le monde"
+
+msgid "Uncheck an action type to withdraw it from this profile, including through generic tools (create, update, apply operations)."
+msgstr "Décochez un type d'action pour le retirer à ce profil, y compris par les outils génériques (créer, modifier, appliquer des opérations)."
+
+msgid "Uncheck the tools this profile must not use. A tool added by a future version is allowed only if every tool is checked here."
+msgstr "Décochez les outils que ce profil ne doit pas utiliser. Un outil ajouté par une future version n'est autorisé que si tous les outils sont cochés ici."
+
+msgid "What the AI assistant can do with this profile"
+msgstr "Ce que l'assistant IA peut faire avec ce profil"
+
+msgid "all tools"
+msgstr "tous les outils"
+
+msgid "change"
+msgstr "modification"
+
+msgid "disabled for everyone"
+msgstr "désactivé pour tout le monde"
+
+msgid "forbidden for everyone"
+msgstr "interdit pour tout le monde"
+
+msgid "withdrawn:"
+msgstr "retirés :"

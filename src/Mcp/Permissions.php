@@ -9,10 +9,12 @@ namespace GlpiPlugin\Glpimcp\Mcp;
 use Config;
 
 /**
- * Interrupteurs par type d'action (Configuration > Plugins > GLPI MCP).
- *
- * Ils s'ajoutent aux droits GLPI de l'utilisateur, ils ne les remplacent jamais : une action doit être
- * à la fois autorisée par le profil GLPI ET activée ici. Les actions à risque sont désactivées par défaut.
+ * Ce que l'assistant IA a le droit de faire, en trois couches qui ne font que restreindre :
+ *  1. outils interdits partout (Administration > Assistant IA) : masqués et refusés pour tout le monde ;
+ *  2. types d'action globaux : une action doit être activée ici ;
+ *  3. politique du profil GLPI utilisé par le jeton (onglet « Assistant IA » de la fiche profil) :
+ *     liste d'outils autorisés et types d'action retirés pour ce profil.
+ * Tout cela s'ajoute aux droits GLPI de l'utilisateur, sans jamais les étendre.
  */
 final class Permissions
 {
@@ -50,6 +52,15 @@ final class Permissions
         'glpi_secincident_add_iocs' => 'security', 'glpi_secincident_task_update' => 'security',
     ];
 
+    /** Outils toujours disponibles : savoir qui l'on est, voir et annuler ses propositions */
+    public const ALWAYS_ON = ['glpi_whoami', 'glpi_list_pending_actions', 'glpi_cancel_action'];
+
+    /** Profil GLPI de la requête MCP en cours (null hors requête MCP : interface GLPI, console) */
+    private static ?int $profile = null;
+    private static ?array $cfg = null;
+    /** @var array<int, ?array> */
+    private static array $policies = [];
+
     private const USERS_GROUPS = ['User', 'Group', 'Group_User', 'Profile_User', 'UserEmail', 'Entity_User'];
     private const RIGHTS = ['Profile', 'ProfileRight'];
     private const PROJECTS = ['Project', 'ProjectTask', 'ProjectTeam', 'ProjectTaskTeam', 'ProjectTask_Ticket', 'Itil_Project', 'Item_Project'];
@@ -57,12 +68,133 @@ final class Permissions
         'Ticket_User', 'Group_Ticket', 'Supplier_Ticket', 'TicketValidation', 'ChangeValidation', 'Change_User', 'Change_Group',
         'Problem_User', 'Group_Problem', 'Item_Ticket', 'Document_Item'];
 
+    /** Appelé pour chaque requête MCP, une fois le profil du jeton appliqué */
+    public static function useProfile(?int $profiles_id): void
+    {
+        self::$profile = $profiles_id !== null && $profiles_id > 0 ? $profiles_id : null;
+        self::reset();
+    }
+
+    public static function currentProfile(): ?int
+    {
+        return self::$profile;
+    }
+
+    /** Oublie les réglages lus (après une modification) */
+    public static function reset(): void
+    {
+        self::$cfg = null;
+        self::$policies = [];
+    }
+
+    private static function cfg(): array
+    {
+        return self::$cfg ??= Config::getConfigurationValues('plugin:glpimcp');
+    }
+
+    /** Type d'action activé globalement (sans tenir compte du profil) */
+    public static function globallyEnabled(string $category): bool
+    {
+        $default = self::CATEGORIES[$category][2] ?? 1;
+        return (int) (self::cfg()['perm_' . $category] ?? $default) === 1;
+    }
+
+    /** Type d'action activé, globalement ET pour le profil de la requête MCP en cours */
     public static function enabled(string $category): bool
     {
-        static $cfg = null;
-        $cfg ??= Config::getConfigurationValues('plugin:glpimcp');
-        $default = self::CATEGORIES[$category][2] ?? 1;
-        return (int) ($cfg['perm_' . $category] ?? $default) === 1;
+        if (!self::globallyEnabled($category)) {
+            return false;
+        }
+        $policy = self::$profile !== null ? self::policy(self::$profile) : null;
+        return !in_array($category, $policy['denied_categories'] ?? [], true);
+    }
+
+    /** @return string[] outils interdits pour tout le monde */
+    public static function bannedTools(): array
+    {
+        return self::cleanTools(json_decode((string) (self::cfg()['banned_tools'] ?? '[]'), true));
+    }
+
+    /**
+     * Politique d'un profil : null = aucune restriction propre au profil.
+     * @return array{tools_mode: string, tools: string[], denied_categories: string[]}|null
+     */
+    public static function policy(int $profiles_id): ?array
+    {
+        if (array_key_exists($profiles_id, self::$policies)) {
+            return self::$policies[$profiles_id];
+        }
+        global $DB;
+        $row = null;
+        try {
+            if ($DB->tableExists(self::POLICY_TABLE)) {
+                $it = $DB->request(['FROM' => self::POLICY_TABLE, 'WHERE' => ['profiles_id' => $profiles_id], 'LIMIT' => 1]);
+                $row = count($it) ? $it->current() : null;
+            }
+        } catch (\Throwable) {
+            $row = null;
+        }
+        return self::$policies[$profiles_id] = $row === null ? null : self::normalizePolicy($row);
+    }
+
+    public const POLICY_TABLE = 'glpi_plugin_glpimcp_profilepolicies';
+
+    public static function normalizePolicy(array $row): array
+    {
+        $cats = json_decode((string) ($row['denied_categories'] ?? '[]'), true);
+        return [
+            'tools_mode'        => ($row['tools_mode'] ?? 'all') === 'list' ? 'list' : 'all',
+            'tools'             => self::cleanTools(json_decode((string) ($row['tools'] ?? '[]'), true)),
+            'denied_categories' => array_values(array_intersect(array_keys(self::CATEGORIES), is_array($cats) ? $cats : [])),
+        ];
+    }
+
+    /** @return string[] */
+    public static function cleanTools(mixed $list): array
+    {
+        if (!is_array($list)) {
+            return [];
+        }
+        return array_values(array_unique(array_filter($list, fn($t) => is_string($t) && preg_match('/^glpi_[a-z0-9_]{1,60}$/', $t))));
+    }
+
+    /**
+     * Décision pure (testable) : l'outil est-il utilisable ?
+     *
+     * @param callable(string): bool $category_enabled
+     */
+    public static function decideTool(string $tool, array $banned, ?array $policy, callable $category_enabled): bool
+    {
+        if (in_array($tool, self::ALWAYS_ON, true)) {
+            return true;
+        }
+        if (in_array($tool, $banned, true)) {
+            return false;
+        }
+        $cat = self::TOOL_CATEGORIES[$tool] ?? null;
+        if ($cat !== null && !$category_enabled($cat)) {
+            return false;
+        }
+        if ($policy !== null && $policy['tools_mode'] === 'list' && !in_array($tool, $policy['tools'], true)) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Pourquoi l'outil est indisponible (null s'il l'est) — pour les messages et l'interface */
+    public static function toolBlockReason(string $tool): ?string
+    {
+        if (self::toolAllowed($tool)) {
+            return null;
+        }
+        if (in_array($tool, self::bannedTools(), true)) {
+            return 'interdit pour tout le monde';
+        }
+        $cat = self::TOOL_CATEGORIES[$tool] ?? null;
+        if ($cat !== null && !self::globallyEnabled($cat)) {
+            return 'type d\'action « ' . self::CATEGORIES[$cat][0] . ' » désactivé';
+        }
+        return 'non autorisé pour ce profil';
     }
 
     /** @return array<string, bool> */
@@ -86,8 +218,8 @@ final class Permissions
 
     public static function toolAllowed(string $tool): bool
     {
-        $cat = self::TOOL_CATEGORIES[$tool] ?? null;
-        return $cat === null || self::enabled($cat);
+        $policy = self::$profile !== null ? self::policy(self::$profile) : null;
+        return self::decideTool($tool, self::bannedTools(), $policy, [self::class, 'enabled']);
     }
 
     /** Types d'action nécessaires pour une opération */
@@ -173,9 +305,12 @@ final class Permissions
         }
         if ($blocked !== []) {
             $labels = array_map(fn($c) => '« ' . self::CATEGORIES[$c][0] . ' »', array_keys($blocked));
+            $by_profile = array_values(array_filter(array_keys($blocked), fn($c) => self::globallyEnabled($c)));
             throw new ToolException(
                 'Action désactivée par l\'administrateur GLPI pour l\'assistant IA : ' . implode(', ', $labels)
-                . '. Un administrateur peut l\'activer dans Configuration > Plugins > GLPI MCP (types d\'actions autorisés). '
+                . ($by_profile !== [] ? ' (retirée pour le profil GLPI utilisé)' : '')
+                . '. Un administrateur peut l\'activer dans Administration > Assistant IA (MCP)'
+                . ($by_profile !== [] ? ' ou dans l\'onglet « Assistant IA » de la fiche du profil' : '') . '. '
                 . 'Rien n\'a été modifié.',
                 ['types_désactivés' => array_keys($blocked)]
             );
@@ -185,6 +320,6 @@ final class Permissions
     private static function message(string $cat): string
     {
         return 'Action désactivée par l\'administrateur GLPI pour l\'assistant IA : « ' . self::CATEGORIES[$cat][0]
-            . ' ». Un administrateur peut l\'activer dans Configuration > Plugins > GLPI MCP.';
+            . ' ». Un administrateur peut l\'activer dans Administration > Assistant IA (MCP).';
     }
 }

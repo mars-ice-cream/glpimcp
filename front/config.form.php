@@ -1,7 +1,7 @@
 <?php
 
 /**
- * GLPI MCP — page de configuration (Configuration > Plugins > GLPI MCP)
+ * GLPI MCP — page de configuration (Administration > Assistant IA (MCP), ou Configuration > Plugins > GLPI MCP)
  *
  * @license GPL-3.0-or-later
  */
@@ -67,6 +67,23 @@ if (isset($_POST['update_permissions'])) {
             'exécuté',
             'Types d\'actions IA modifiés : ' . implode(', ', $changes),
             ['avant' => $before, 'après' => array_map(fn($v) => (bool) $v, array_combine(array_keys(Permissions::CATEGORIES), array_values($values)))]
+        );
+    }
+    Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
+    Html::back();
+}
+if (isset($_POST['update_banned'])) {
+    $before = Permissions::bannedTools();
+    $known = \GlpiPlugin\Glpimcp\ProfilePolicy::allToolNames();
+    $banned = array_values(array_diff(array_intersect($known, Permissions::cleanTools($_POST['banned'] ?? [])), Permissions::ALWAYS_ON));
+    Config::setConfigurationValues('plugin:glpimcp', ['banned_tools' => json_encode($banned)]);
+    Permissions::reset();
+    if ($before !== $banned) {
+        AuditLog::write(
+            new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),
+            'plugin_settings', 'exécuté',
+            'Assistant IA : outils interdits pour tout le monde modifiés',
+            ['avant' => $before, 'après' => $banned]
         );
     }
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
@@ -141,7 +158,7 @@ if (isset($_POST['revoke'])) {
 global $DB, $CFG_GLPI;
 $cfg = Config::getConfigurationValues('plugin:glpimcp');
 
-Html::header('GLPI MCP', '', 'config', 'plugin');
+Html::header(__('AI assistant (MCP)', 'glpimcp'), '', 'admin', \GlpiPlugin\Glpimcp\Menu::class);
 
 $endpoint = rtrim($CFG_GLPI['url_base'] ?? '', '/') . '/plugins/glpimcp/mcp';
 $csrf = Session::getNewCSRFToken();
@@ -216,6 +233,37 @@ foreach (Permissions::CATEGORIES as $k => [$label, $desc, $default]) {
 echo '</div><button type="submit" name="update_permissions" class="btn btn-primary mt-3">' . _sx('button', 'Save') . '</button></form>';
 echo '<p class="text-muted mt-2 mb-0"><small>' . __('Reading is always allowed (within GLPI rights). Remote access to files from URLs is never available.', 'glpimcp') . '</small></p>';
 echo '</div></div>';
+
+// --- Outils interdits partout -------------------------------------------------
+$banned = Permissions::bannedTools();
+echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-ban me-2"></i>' . __('Tools forbidden for everyone', 'glpimcp') . '</h3></div><div class="card-body">';
+echo '<p class="text-muted">' . __('A checked tool is hidden from every AI assistant and refused, whatever the profile. It takes precedence over everything else.', 'glpimcp') . '</p>';
+echo '<form method="post" action="">' . Html::hidden('_glpi_csrf_token', ['value' => $csrf]) . '<div class="row g-3">';
+foreach (\GlpiPlugin\Glpimcp\ProfilePolicy::toolGroups() as $group => $tools) {
+    echo '<div class="col-md-4"><div class="border rounded p-2 h-100"><strong>' . htmlescape($group) . '</strong>';
+    foreach ($tools as $name => [$title, $write]) {
+        $always = in_array($name, Permissions::ALWAYS_ON, true);
+        echo '<div class="form-check"><input class="form-check-input" type="checkbox" name="banned[]" value="' . htmlescape($name) . '" id="glpimcp_b_' . htmlescape($name) . '"'
+            . (in_array($name, $banned, true) ? ' checked' : '') . ($always ? ' disabled' : '') . '>'
+            . '<label class="form-check-label" for="glpimcp_b_' . htmlescape($name) . '">' . htmlescape($title)
+            . ($write ? ' <span class="badge bg-blue-lt">' . __('change', 'glpimcp') . '</span>' : '')
+            . '<br><small class="text-muted"><code>' . htmlescape($name) . '</code></small></label></div>';
+    }
+    echo '</div></div>';
+}
+echo '</div><button type="submit" name="update_banned" class="btn btn-danger mt-3">' . _sx('button', 'Save') . '</button></form>';
+echo '</div></div>';
+
+// --- Restrictions par profil ----------------------------------------------------
+echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-users me-2"></i>' . __('Restrictions per profile', 'glpimcp') . '</h3></div><div class="card-body p-0">';
+echo '<p class="text-muted px-3 pt-3">' . __('Open a profile to choose the tools and action types the AI assistant may use with it (tab « AI assistant (MCP) » of the profile).', 'glpimcp') . '</p>';
+echo '<table class="table table-sm table-hover mb-0"><thead><tr><th>' . Profile::getTypeName(1) . '</th><th>' . __('AI assistant', 'glpimcp') . '</th><th></th></tr></thead><tbody>';
+foreach ($DB->request(['SELECT' => ['id', 'name'], 'FROM' => 'glpi_profiles', 'ORDER' => 'name']) as $p) {
+    $url = Profile::getFormURLWithID((int) $p['id']) . '&forcetab=' . urlencode(\GlpiPlugin\Glpimcp\ProfilePolicy::class . '$1');
+    echo '<tr><td>' . htmlescape($p['name']) . '</td><td>' . htmlescape(\GlpiPlugin\Glpimcp\ProfilePolicy::summary(Permissions::policy((int) $p['id']))) . '</td>'
+        . '<td><a class="btn btn-sm btn-outline-secondary" href="' . htmlescape($url) . '">' . __('Configure', 'glpimcp') . '</a></td></tr>';
+}
+echo '</tbody></table></div></div>';
 
 // --- Clients OAuth -----------------------------------------------------------
 echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title">' . __('Registered AI clients (OAuth)', 'glpimcp') . '</h3></div><div class="card-body p-0">';

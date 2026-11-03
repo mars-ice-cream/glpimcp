@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.0 — 2026-11-03
+- **Menu Administration > Assistant IA (MCP)** : la page de réglages n'est plus cachée dans Configuration > Plugins.
+- **Outils interdits pour tout le monde** : masqués et refusés quel que soit le profil.
+- **Restrictions par profil** : onglet *Assistant IA (MCP)* sur la fiche profil — outils autorisés et types
+  d'action retirés pour ce profil, appliqués au profil réellement utilisé par le jeton ou l'accès OAuth.
+  Ne fait que restreindre ; revérifié à la confirmation (une action préparée avec un outil retiré est
+  refusée) ; chaque modification est journalisée.
+- Limiteur de débit : une seule requête SQL atomique (`INSERT … ON DUPLICATE KEY UPDATE`) au lieu
+  d'`INSERT IGNORE`, qui écrivait un avertissement dans les journaux GLPI à chaque appel.
+- Tests : scénario de bout en bout (interdiction globale, politique de profil, confirmation refusée,
+  menu), tests unitaires de la décision d'accès aux outils.
+
 ## 1.5.0 — 2026-11-03
 - **Déploiement en entreprise** : un client IA enregistré (ex. l'agent Copilot Studio) peut être passé
   « géré par l'entreprise » : profil imposé (ex. Self-Service), consentement implicite après la connexion
