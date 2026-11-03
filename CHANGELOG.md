@@ -7,6 +7,12 @@
   d'action retirés pour ce profil, appliqués au profil réellement utilisé par le jeton ou l'accès OAuth.
   Ne fait que restreindre ; revérifié à la confirmation (une action préparée avec un outil retiré est
   refusée) ; chaque modification est journalisée.
+- **Clients gérés : retirer une politique coupe les accès qui ne la respectent plus.** Chaque accès OAuth
+  retient s'il a été accordé avec ou sans page de consentement. Retirer le statut « géré » ou le consentement
+  implicite, changer le profil imposé ou raccourcir la durée coupe aussitôt les accès concernés : requêtes
+  MCP refusées (403), rafraîchissement refusé (`invalid_grant`), codes non échangés invalidés. Vérifié à
+  chaque usage, pas seulement à l'enregistrement dans l'interface. Les accès consentis explicitement par
+  l'utilisateur restent valides.
 - Limiteur de débit : une seule requête SQL atomique (`INSERT … ON DUPLICATE KEY UPDATE`) au lieu
   d'`INSERT IGNORE`, qui écrivait un avertissement dans les journaux GLPI à chaque appel.
 - Tests : scénario de bout en bout (interdiction globale, politique de profil, confirmation refusée,

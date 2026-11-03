@@ -113,16 +113,26 @@ if (isset($_POST['client_policy'])) {
         'date_mod'           => date('Y-m-d H:i:s'),
     ];
     $DB->update('glpi_plugin_glpimcp_oauthclients', $values, ['id' => $cid]);
-    if ($before && ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed)) {
-        // Profil imposé changé : les accès accordés avec un autre profil sont coupés (reconnexion = nouveau profil)
-        $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['oauthclients_id' => $cid, 'NOT' => ['profiles_id' => $profile]]);
-        // … et les codes d'autorisation pas encore échangés sont invalidés
-        $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
+    $cut = 0;
+    if ($before) {
+        // Accès déjà accordés qui ne respectent plus la nouvelle politique (consentement implicite retiré, profil
+        // imposé changé, durée raccourcie) : coupés tout de suite ; ils seraient de toute façon refusés à l'usage
+        $after = array_merge($before, $values);
+        foreach ($DB->request(['FROM' => 'glpi_plugin_glpimcp_tokens', 'WHERE' => ['oauthclients_id' => $cid, 'is_active' => 1]]) as $t) {
+            if (\GlpiPlugin\Glpimcp\OAuth\ClientPolicy::grantViolation($after, $t) !== null) {
+                $DB->update('glpi_plugin_glpimcp_tokens', ['is_active' => 0], ['id' => (int) $t['id']]);
+                $cut++;
+            }
+        }
+        if ((int) $before['forced_profiles_id'] !== $profile || (int) $before['managed'] !== $managed || (int) $before['skip_consent'] !== $values['skip_consent']) {
+            // Codes d'autorisation pas encore échangés : invalidés
+            $DB->delete('glpi_plugin_glpimcp_oauthcodes', ['oauthclients_id' => $cid]);
+        }
     }
     AuditLog::write(
         new Context((int) Session::getLoginUserID(), ['id' => 0, 'name' => 'Interface GLPI']),
         'client_policy', 'exécuté', 'Politique du client IA « ' . ($before['name'] ?? '#' . $cid) . ' » modifiée',
-        ['avant' => array_intersect_key((array) $before, $values), 'après' => $values]
+        ['avant' => array_intersect_key((array) $before, $values), 'après' => $values, 'accès_coupés' => $cut]
     );
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();

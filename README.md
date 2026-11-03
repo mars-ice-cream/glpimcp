@@ -334,6 +334,11 @@ le compte GLPI ; toutes passent par les mêmes garde-fous (aperçu, approbation,
 | **Assistant de l'entreprise** (Copilot, Claude Team/Enterprise, ChatGPT Enterprise…) | tous les salariés | OAuth + client IA **géré** par l'administrateur, SSO de GLPI | la 1re fois, *Se connecter* ; avec le SSO AD, aucun mot de passe ni page de consentement |
 | **Relais** (Dokore…) | outils qui ajoutent leurs propres fonctions | OAuth via un serveur relais autorisé | comme l'assistant qui passe par le relais |
 
+**Changer la politique d'un client géré** prend effet tout de suite sur les accès déjà accordés : retirer
+le statut « géré » ou le consentement implicite, changer le profil imposé ou raccourcir la durée coupe les
+accès qui ne la respectent plus (requêtes, rafraîchissement et codes en attente refusés). Les salariés
+concernés se reconnectent ; sans consentement implicite, ils voient alors la page de consentement.
+
 Selon l'annuaire de l'entreprise :
 
 - **SSO (AD / Entra) branché sur GLPI** : connexion transparente, aucun mot de passe à taper.

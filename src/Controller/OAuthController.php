@@ -144,9 +144,10 @@ final class OAuthController extends AbstractController
                 ) . '</div>'), 403);
             }
             $days = (int) ($client['token_days'] ?? 0) > 0 ? (int) $client['token_days'] : 90;
-            if (!empty($client['skip_consent']) || ($request->isMethod('POST') && ($q['decision'] ?? '') === 'allow')) {
+            $implicit = ClientPolicy::grantsImplicitly($client);
+            if ($implicit || ($request->isMethod('POST') && ($q['decision'] ?? '') === 'allow')) {
                 OAuthServer::purgeExpiredCodes();
-                $code = OAuthServer::issueCode($req, $users_id, $forced, $days);
+                $code = OAuthServer::issueCode($req, $users_id, $forced, $days, $implicit);
                 return new RedirectResponse(OAuthServer::redirectWith($req['redirect_uri'], [
                     'code'  => $code,
                     'state' => $req['state'],
