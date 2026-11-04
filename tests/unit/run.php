@@ -153,6 +153,8 @@ check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_se
 echo "VulnWatch\n";
 check('campagne : veille + tickets', Permissions::categoriesOf(['op' => 'vulnwatch_campaign', 'items' => [1]]), ['vulnwatch', 'tickets']);
 check('contexte d\'actif', Permissions::categoriesOf(['op' => 'vulnwatch_context']), ['vulnwatch']);
+check('espace de noms VulnWatch, casse différente', \GlpiPlugin\Glpimcp\Integrations\VulnWatch::isVwType('glpiplugin\\vulnwatch\\Feed'), true);
+check('espace de noms SecIncident, casse différente', \GlpiPlugin\Glpimcp\Integrations\SecIncident::isSecType('\\GLPIPLUGIN\\SECINCIDENT\\Incident'), true);
 check('outil campagne rattaché à son type d\'action', Permissions::TOOL_CATEGORIES['glpi_vulnwatch_campaign'] ?? null, 'vulnwatch');
 
 echo "Outils métier ↔ opérations des outils génériques\n";

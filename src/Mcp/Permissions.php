@@ -334,7 +334,7 @@ final class Permissions
             in_array($short, self::TICKETS, true)        => 'tickets',
             str_starts_with($short, 'Rule')              => 'rules',
             in_array($short, self::PROJECTS, true)       => 'projects',
-            str_starts_with($short, 'GlpiPlugin\\Secincident\\') => 'security',
+            stripos($short, 'GlpiPlugin\\Secincident\\') === 0 => 'security',
             str_starts_with($short, 'Glpi\\Form\\')      => 'forms_design',
             $short === 'Software'                        => 'items',
             default                                      => 'items',

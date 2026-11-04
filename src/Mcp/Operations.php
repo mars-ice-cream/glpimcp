@@ -213,6 +213,7 @@ final class Operations
                         if (!VulnWatch::canCampaign()) {
                             throw new ToolException('Droits VulnWatch « Créer » requis.');
                         }
+                        VulnWatch::assertRestorable((array) ($op['items'] ?? []));
                         $preview[] = ['n' => $n, 'action' => __('detach alerts from their campaign', 'glpimcp'), 'objet' => count((array) ($op['items'] ?? [])) . ' alerte(s) VulnWatch'];
                         break;
 
@@ -444,6 +445,13 @@ final class Operations
                             throw new ToolException("Opération {$n} : droits VulnWatch « Créer » et création de ticket requis.");
                         }
                         $c = VulnWatch::campaignExecute((array) ($op['items'] ?? []));
+                        foreach ($c['résultat']['objets_créés'] as $obj) {
+                            // État après exécution : une modification ultérieure du ticket sera un conflit à l'annulation
+                            $t = new \Ticket();
+                            if ($t->getFromDB((int) $obj['id'])) {
+                                self::recordState($journal, $t);
+                            }
+                        }
                         array_push($journal['undo'], ...$c['undo']);
                         array_push($journal['irréversible'], ...$c['irréversible']);
                         $results[] = ['n' => $n] + $c['résultat'] + ['messages_glpi' => Items::flushMessages()];
@@ -538,7 +546,13 @@ final class Operations
         foreach ($ops as $i => $op) {
             if (is_array($op) && isset($op['itemtype']) && is_string($op['itemtype']) && $op['itemtype'] !== '') {
                 try {
-                    $ops[$i]['itemtype'] = Items::resolveType($op['itemtype']);
+                    $type = Items::resolveType($op['itemtype']);
+                    // Nom de classe tel que déclaré : PHP ignore la casse (« glpiplugin\vulnwatch\feed »),
+                    // les garde-fous par espace de noms ne doivent pas l'ignorer
+                    if (class_exists($type)) {
+                        $type = (new \ReflectionClass($type))->getName();
+                    }
+                    $ops[$i]['itemtype'] = $type;
                 } catch (ToolException) {
                     // Type inconnu ou interdit : l'aperçu le refusera avec un message clair
                 }

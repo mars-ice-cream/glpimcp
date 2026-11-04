@@ -1075,7 +1075,15 @@ def vulnwatch_si_le_plugin_est_actif():
     assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_vulnwatch_findings_items WHERE id IN ({','.join(map(str, ids))}) AND plugin_vulnwatch_campaigns_id > 0") == len(ids)
     assert db_count("SELECT COUNT(*) FROM glpi_plugin_vulnwatch_decisionlogs WHERE action='ai_assistant'") >= 1, "canal IA absent du journal VulnWatch"
     created = [o["id"] for o in res["objets_créés"]]
-    u = ok(TOK["admin"], "glpi_rollback_action", {"log_id": r["journal_id"]})
+    if created:
+        # Ticket de campagne modifié depuis : l'annulation le signale comme conflit au lieu de l'écraser
+        db(f"UPDATE glpi_tickets SET name=CONCAT(name, ' (modifié)'), date_mod=NOW() WHERE id={created[0]}")
+        refused(TOK["admin"], "glpi_rollback_action", {"log_id": r["journal_id"]}, contains="onflit")
+        u = ok(TOK["admin"], "glpi_rollback_action", {"log_id": r["journal_id"], "force": True})
+        if u.get("approbation_humaine"):
+            approve(glpi_session(), u["approbation_humaine"]["url"])
+    else:
+        u = ok(TOK["admin"], "glpi_rollback_action", {"log_id": r["journal_id"]})
     ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": u["confirmation_id"]})
     assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_vulnwatch_findings_items WHERE id IN ({','.join(map(str, ids))}) AND plugin_vulnwatch_campaigns_id > 0") == 0, "rattachement non défait"
     if created:
@@ -1096,6 +1104,8 @@ def vulnwatch_si_le_plugin_est_actif():
     refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "GlpiPlugin\\Vulnwatch\\Feed", "fields": {"name": PREFIX + " flux", "url": "http://169.254.169.254/"}}]}, contains="VulnWatch")
     refused(TOK["admin"], "glpi_apply_operations", {"summary": "flux", "client": "tests", "operations": [
         {"op": "add", "itemtype": "GlpiPlugin\\Vulnwatch\\Target", "input": {"software_name": "x"}}]}, contains="VulnWatch")
+    # Casse différente : PHP résout la même classe, le garde-fou doit la reconnaître aussi
+    refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "glpiplugin\\vulnwatch\\feed", "fields": {"name": PREFIX + " flux", "url": "http://169.254.169.254/"}}]}, contains="VulnWatch")
     # Interrupteur « Veille vulnérabilités » : outils d'écriture masqués, lecture conservée
     set_plugin_config("perm_vulnwatch", "0")
     try:

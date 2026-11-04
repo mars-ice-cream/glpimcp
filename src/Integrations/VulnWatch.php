@@ -78,7 +78,8 @@ final class VulnWatch
 
     public static function isVwType(string $itemtype): bool
     {
-        return str_starts_with(ltrim($itemtype, '\\'), self::NS);
+        // Insensible à la casse, comme la résolution des classes par PHP
+        return stripos(ltrim($itemtype, '\\'), self::NS) === 0;
     }
 
     /**
@@ -270,10 +271,26 @@ final class VulnWatch
         ];
     }
 
+    /** Les alertes à détacher sont toutes dans le périmètre ACTUEL de l'utilisateur (profil, entités) */
+    public static function assertRestorable(array $items): void
+    {
+        global $DB;
+        $ids = array_map('intval', array_keys($items));
+        if ($ids === []) {
+            return;
+        }
+        foreach ($DB->request(['SELECT' => ['id', 'entities_id'], 'FROM' => 'glpi_plugin_vulnwatch_findings_items', 'WHERE' => ['id' => $ids]]) as $r) {
+            if (!Session::haveAccessToEntity((int) $r['entities_id'])) {
+                throw new ToolException('Alerte VulnWatch #' . (int) $r['id'] . ' hors de ton périmètre actuel (profil ou entité) : annulation impossible avec ce contexte.');
+            }
+        }
+    }
+
     /** Annulation d'une campagne : rattachement des alertes rétabli */
     public static function campaignRestore(array $items): array
     {
         global $DB;
+        self::assertRestorable($items);
         $n = 0;
         foreach ($items as $id => $campaign) {
             $DB->update('glpi_plugin_vulnwatch_findings_items', ['plugin_vulnwatch_campaigns_id' => (int) $campaign], ['id' => (int) $id]);
