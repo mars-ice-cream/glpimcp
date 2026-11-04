@@ -76,6 +76,12 @@ final class Server
             Tools\SecIncidentAddEvent::class,
             Tools\SecIncidentAddIocs::class,
             Tools\SecIncidentTaskUpdate::class,
+
+            Tools\VulnWatchOverview::class,
+            Tools\VulnWatchFindings::class,
+            Tools\VulnWatchCve::class,
+            Tools\VulnWatchCampaign::class,
+            Tools\VulnWatchAssetContext::class,
             // Formulaires (catalogue de services)
             Tools\FormList::class,
             Tools\FormGet::class,

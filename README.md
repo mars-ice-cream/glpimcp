@@ -51,7 +51,7 @@ Quatre principes :
   (processus arrêté) → reprise possible après 15 min, car l'état « exécutée » est validé dans la même
   transaction que les écritures.
 
-## Outils (45)
+## Outils (50)
 
 | Domaine | Outils |
 |---|---|
@@ -64,6 +64,7 @@ Quatre principes :
 | Assistance | `glpi_ticket_create`, `glpi_ticket_get` (chronologie), `glpi_ticket_add_followup`, `glpi_ticket_add_task`, `glpi_ticket_add_solution`, `glpi_ticket_add_actor`, `glpi_validation_answer`, `glpi_kb_search` |
 | Projets | `glpi_project_list`, `glpi_project_get`, `glpi_project_my_tasks`, `glpi_project_task_add`, `glpi_project_task_update` |
 | Incidents de sécurité* | `glpi_secincident_list`, `glpi_secincident_get`, `glpi_secincident_declare`, `glpi_secincident_add_event`, `glpi_secincident_add_iocs`, `glpi_secincident_task_update` |
+| Vulnérabilités** | `glpi_vulnwatch_overview`, `glpi_vulnwatch_findings`, `glpi_vulnwatch_cve`, `glpi_vulnwatch_campaign`, `glpi_vulnwatch_asset_context` |
 | Formulaires | `glpi_form_list`, `glpi_form_get`, `glpi_form_question_types`, `glpi_form_submit` (remplissage conversationnel) |
 | Configuration | `glpi_config_get`, `glpi_config_set`, `glpi_profile_rights`, `glpi_rule_list` |
 | Primitives | `glpi_export`, `glpi_system_facts`, `glpi_apply_operations` (voir ci-dessous) |
@@ -75,6 +76,7 @@ Les outils affichés dépendent du profil (un *Self-Service* ne voit ni la confi
 et des types d'actions activés par l'administrateur.
 
 \* Seulement si le plugin [SecIncident](https://github.com/mars-ice-cream/secincident) est installé et actif.
+\*\* Seulement si le plugin [VulnWatch](https://github.com/mars-ice-cream/vulnwatch) est installé et actif.
 
 ### Incidents de sécurité (plugin SecIncident)
 
@@ -95,6 +97,27 @@ restriction optionnelle au groupe sécurité (appliquée aussi aux sessions de l
   événements et IOC créés portent la source `mcp`.
 - **Injection de consignes** : tout texte issu d'un incident (mail de phishing collé, commande, données EDR) est
   renvoyé encadré `«««DONNÉE NON FIABLE»»» … «««FIN»»»`, avec la consigne de l'analyser sans jamais l'exécuter.
+
+### Veille vulnérabilités (plugin VulnWatch)
+
+Quand VulnWatch est actif, l'assistant répond aux quatre questions du plugin (qui est concerné, pourquoi, quoi
+traiter d'abord, la correction est-elle appliquée) avec **les droits et le périmètre d'entités de l'interface**
+(droit `plugin_vulnwatch` : lire, modifier, créer).
+
+- **Lecture** : vue d'ensemble (compteurs par entité, couverture réelle de l'analyse, alertes les plus
+  prioritaires), alertes actif × CVE triées par priorité avec leurs critères, la confiance, la règle appliquée et
+  les raisons (filtres : CVE, logiciel, actif, statut, état, régressions, KEV, sans campagne), fiche d'une CVE
+  (CVSS, KEV, EPSS, critères d'applicabilité, bulletins des flux visibles, actifs concernés).
+- **Écriture**, par le type d'action *Veille vulnérabilités* (activé par défaut) : créer ou compléter les
+  **tickets de campagne** (un par entité × produit × version cible, sans doublon, via le moteur de VulnWatch),
+  renseigner la **criticité et l'exposition** d'un actif. Aperçu, confirmation, quotas de tickets et annulation
+  comme partout (l'annulation d'une campagne met les tickets créés à la corbeille et détache les alertes).
+- **Jamais via l'IA**, même avec les outils génériques : flux de veille (une URL que le serveur interroge),
+  versions cibles, sources et réglages, décisions de rapprochement (valider ou rejeter une association).
+- **Traçabilité** : en plus du journal IA, le journal des décisions de VulnWatch enregistre la campagne
+  (`ticket_manual`) et une entrée `ai_assistant` ; le contexte d'actif y est tracé avec le canal.
+- **Injection de consignes** : descriptions de CVE et titres de bulletins RSS sont renvoyés encadrés
+  `«««DONNÉE NON FIABLE»»» … «««FIN»»»`.
 
 ### Primitives pour les programmes
 
@@ -188,7 +211,7 @@ exempté comme l'API de GLPI ; les actions critiques de l'IA passent de toute fa
 
 ```bash
 cd /var/www/glpi/plugins            # ou marketplace/
-unzip glpimcp-1.6.0.zip             # crée le dossier glpimcp/
+unzip glpimcp-1.7.0.zip             # crée le dossier glpimcp/
 chown -R www-data:www-data glpimcp
 php /var/www/glpi/bin/console plugin:install glpimcp --username=glpi
 php /var/www/glpi/bin/console plugin:activate glpimcp
@@ -409,6 +432,7 @@ file de notifications de GLPI. Un jeton volé reste donc borné : quelques ticke
 - **De bout en bout**, via le protocole MCP comme un vrai client, contre un GLPI **jetable** :
 
   ```bash
+  # VULNWATCH_DIR=/chemin/vers/vulnwatch pour tester aussi l'intégration VulnWatch
   # GLPI 11.0.12 téléchargé (GLPI_VERSION=12.0.1 pour GLPI 12), base dédiée (recréée), plugin, données de test, serveur sur :8080
   DB_HOST=127.0.0.1 DB_USER=root DB_PASSWORD=root WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_setup.sh
   WORK=/tmp/glpimcp-e2e bash tests/e2e/ci_run.sh          # -k motif pour un sous-ensemble

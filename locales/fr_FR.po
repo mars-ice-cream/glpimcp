@@ -904,3 +904,46 @@ msgstr "Décocher un outil interdit aussi la même opération par les outils gé
 
 msgid "The same operation is also refused through the generic tools (create, update, apply operations)."
 msgstr "La même opération est aussi refusée par les outils génériques (créer, modifier, appliquer des opérations)."
+
+# 1.7.0 — intégration VulnWatch
+msgid "Vulnerability watch (VulnWatch)"
+msgstr "Veille vulnérabilités (VulnWatch)"
+
+msgid "Create or complete campaign tickets from alerts, set the criticality and exposure of an asset"
+msgstr "Créer ou compléter des tickets de campagne à partir des alertes, renseigner la criticité et l'exposition d'un actif"
+
+msgid "Create or complete a vulnerability campaign ticket"
+msgstr "Créer ou compléter un ticket de campagne de vulnérabilités"
+
+msgid "Set the criticality and exposure of an asset"
+msgstr "Renseigner la criticité et l'exposition d'un actif"
+
+msgid "VulnWatch campaign: %d alert(s)"
+msgstr "Campagne VulnWatch : %d alerte(s)"
+
+msgid "VulnWatch context of %s"
+msgstr "Contexte VulnWatch de %s"
+
+msgid "Vulnerability (CVE) record"
+msgstr "Fiche d'une vulnérabilité (CVE)"
+
+msgid "Vulnerability alerts"
+msgstr "Alertes de vulnérabilité"
+
+msgid "Vulnerability overview"
+msgstr "Vue d'ensemble des vulnérabilités"
+
+msgid "create or complete campaign tickets"
+msgstr "créer ou compléter des tickets de campagne"
+
+msgid "detach alerts from their campaign"
+msgstr "détacher les alertes de leur campagne"
+
+msgid "partial: created tickets can be moved to the trash; follow-ups added to existing tickets and notifications stay"
+msgstr "partielle : les tickets créés peuvent être mis à la corbeille ; les suivis ajoutés aux tickets existants et les notifications restent"
+
+msgid "set the VulnWatch context of an asset"
+msgstr "renseigner le contexte VulnWatch d'un actif"
+
+msgid "yes (previous values)"
+msgstr "oui (anciennes valeurs)"

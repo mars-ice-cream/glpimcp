@@ -19,6 +19,8 @@ parameters:
   ignoreErrors:
     # Plugin SecIncident : optionnel, chargé seulement s'il est installé
     - '#GlpiPlugin\\Secincident\\#'
+    # Plugin VulnWatch : optionnel, chargé seulement s'il est installé
+    - '#GlpiPlugin\\Vulnwatch\\#'
     # Ré-authentification : GLPI 12 seulement (appel protégé par Compat::isGlpi12)
     - '#Glpi\\Security\\ReAuth\\ReAuthManager#'
     # Variables globales de GLPI

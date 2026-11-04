@@ -47,7 +47,8 @@ final class SecIncident
 
     public static function isSecType(string $itemtype): bool
     {
-        return str_starts_with(ltrim($itemtype, '\\'), self::NS);
+        // Insensible à la casse, comme la résolution des classes par PHP
+        return stripos(ltrim($itemtype, '\\'), self::NS) === 0;
     }
 
     /**
