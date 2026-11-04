@@ -75,6 +75,11 @@ jobs:
           ini-values: memory_limit=512M
       - name: Client MySQL et requests
         run: sudo apt-get install -y mariadb-client >/dev/null && pip install requests
+      - name: Plugin VulnWatch (intégration testée s'il s'installe sur cette version de GLPI)
+        run: |
+          git clone -q --depth 1 --branch v1-initial https://github.com/mars-ice-cream/vulnwatch "$RUNNER_TEMP/vulnwatch" \
+            || git clone -q --depth 1 https://github.com/mars-ice-cream/vulnwatch "$RUNNER_TEMP/vulnwatch" || true
+          echo "VULNWATCH_DIR=$RUNNER_TEMP/vulnwatch" >> "$GITHUB_ENV"
       - name: GLPI jetable, plugin, données de test
         run: bash tests/e2e/ci_setup.sh
       - name: Tests de bout en bout

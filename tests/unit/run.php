@@ -150,6 +150,11 @@ $old = ['tools_mode' => 'list', 'tools' => ['glpi_search'], 'denied_categories' 
 $new = Permissions::mergePolicy($old, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
 check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_search']);
 
+echo "VulnWatch\n";
+check('campagne : veille + tickets', Permissions::categoriesOf(['op' => 'vulnwatch_campaign', 'items' => [1]]), ['vulnwatch', 'tickets']);
+check('contexte d\'actif', Permissions::categoriesOf(['op' => 'vulnwatch_context']), ['vulnwatch']);
+check('outil campagne rattaché à son type d\'action', Permissions::TOOL_CATEGORIES['glpi_vulnwatch_campaign'] ?? null, 'vulnwatch');
+
 echo "Outils métier ↔ opérations des outils génériques\n";
 check('création de ticket', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'Ticket']), ['glpi_ticket_create']);
 check('suivi', Permissions::equivalentTools(['op' => 'add', 'itemtype' => 'ITILFollowup']), ['glpi_ticket_add_followup']);

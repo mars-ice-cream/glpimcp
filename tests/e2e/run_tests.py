@@ -566,7 +566,7 @@ def token_id(plain):
 
 
 def set_plugin_config(name, value):
-    db(f"UPDATE glpi_configs SET value='{value}' WHERE context='plugin:glpimcp' AND name='{name}'")
+    db(f"INSERT INTO glpi_configs (context, name, value) VALUES ('plugin:glpimcp', '{name}', '{value}') ON DUPLICATE KEY UPDATE value=VALUES(value)")
 
 
 @test
@@ -1040,6 +1040,69 @@ def secincident_si_le_plugin_est_actif():
     if TOK.get("selfservice"):
         ss = [x["name"] for x in rpc(TOK["selfservice"], "tools/list")["tools"]]
         assert "glpi_secincident_declare" not in ss
+
+
+@test
+def vulnwatch_si_le_plugin_est_actif():
+    """Plugin VulnWatch : lecture des alertes (priorité, raisons, données externes non fiables), campagne de tickets
+    avec aperçu, confirmation et annulation, contexte d'actif, garde-fous (configuration, droits, interrupteur)."""
+    need("admin", "selfservice")
+    names = tool_names(TOK["admin"])
+    if "glpi_vulnwatch_findings" not in names:
+        raise Skip("plugin VulnWatch absent, ou pas de droit VulnWatch pour l'admin")
+    assert not any(n.startswith("glpi_vulnwatch") for n in tool_names(TOK["selfservice"])), "outils VulnWatch visibles sans droit"
+    ov = ok(TOK["admin"], "glpi_vulnwatch_overview", {"top": 3})
+    assert ov["par_entité"] and "couverture" in ov, ov
+    cve = ok(TOK["admin"], "glpi_vulnwatch_cve", {"cve": ov["alertes_prioritaires"][0]["cve"]}) if ov["alertes_prioritaires"] else None
+    if cve and cve["description"]:
+        assert cve["description"].startswith("«««DONNÉE NON FIABLE»»»"), "description de CVE non marquée comme non fiable"
+    free = ok(TOK["admin"], "glpi_vulnwatch_findings", {"without_campaign": True, "limit": 2})["alertes"]
+    if not free:
+        raise Skip("aucune alerte active sans campagne dans le jeu de données VulnWatch")
+    a = free[0]
+    assert a["priorité"] and a["raisons"] is not None and a["règle"], a
+    ids = [x["alerte_id"] for x in free]
+
+    # Campagne : aperçu, confirmation, traces, annulation
+    p = ok(TOK["admin"], "glpi_vulnwatch_campaign", {"finding_ids": ids + [999999]})
+    assert p["statut"] == "en_attente_de_confirmation", p
+    camp = p["aperçu"][0]
+    assert camp["campagnes"] and any("999999" in x for x in camp["ignorées"]), camp
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_vulnwatch_findings_items WHERE id IN ({','.join(map(str, ids))}) AND plugin_vulnwatch_campaigns_id > 0") == 0, "rattaché dès l'aperçu"
+    r = ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": p["confirmation_id"]})
+    res = r["résultats"][0]
+    assert res["alertes_rattachées"] == len(ids) and res["tickets_créés"] + res["tickets_complétés"] >= 1, res
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_vulnwatch_findings_items WHERE id IN ({','.join(map(str, ids))}) AND plugin_vulnwatch_campaigns_id > 0") == len(ids)
+    assert db_count("SELECT COUNT(*) FROM glpi_plugin_vulnwatch_decisionlogs WHERE action='ai_assistant'") >= 1, "canal IA absent du journal VulnWatch"
+    created = [o["id"] for o in res["objets_créés"]]
+    u = ok(TOK["admin"], "glpi_rollback_action", {"log_id": r["journal_id"]})
+    ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": u["confirmation_id"]})
+    assert db_count(f"SELECT COUNT(*) FROM glpi_plugin_vulnwatch_findings_items WHERE id IN ({','.join(map(str, ids))}) AND plugin_vulnwatch_campaigns_id > 0") == 0, "rattachement non défait"
+    if created:
+        assert db_count(f"SELECT COUNT(*) FROM glpi_tickets WHERE id IN ({','.join(map(str, created))}) AND is_deleted=1") == len(created), "ticket de campagne non mis à la corbeille"
+
+    # Contexte d'actif : aperçu avant/après, confirmation, annulation
+    it, iid = a["itemtype"], a["items_id"]
+    old = db(f"SELECT IFNULL(MAX(criticality), 0), IFNULL(MAX(exposure), 0) FROM glpi_plugin_vulnwatch_assetcontexts WHERE itemtype='{it}' AND items_id={iid}")[0]
+    target = {"criticality": 1 if old[0] == "3" else 3, "exposure": 1 if old[1] == "2" else 2}
+    c = propose_confirm(TOK["admin"], "glpi_vulnwatch_asset_context", {"itemtype": it, "items_id": iid, **target})
+    assert db(f"SELECT criticality, exposure FROM glpi_plugin_vulnwatch_assetcontexts WHERE itemtype='{it}' AND items_id={iid}")[0] == [str(target["criticality"]), str(target["exposure"])]
+    u = ok(TOK["admin"], "glpi_rollback_action", {"log_id": c["journal_id"]})
+    ok(TOK["admin"], "glpi_confirm_action", {"confirmation_id": u["confirmation_id"]})
+    journal_ids.remove(c["journal_id"])
+    assert db(f"SELECT criticality, exposure FROM glpi_plugin_vulnwatch_assetcontexts WHERE itemtype='{it}' AND items_id={iid}")[0] == old, "contexte non rétabli"
+
+    # Configuration de VulnWatch (flux = URL interrogée par le serveur) : jamais par l'assistant
+    refused(TOK["admin"], "glpi_create_items", {"items": [{"itemtype": "GlpiPlugin\\Vulnwatch\\Feed", "fields": {"name": PREFIX + " flux", "url": "http://169.254.169.254/"}}]}, contains="VulnWatch")
+    refused(TOK["admin"], "glpi_apply_operations", {"summary": "flux", "client": "tests", "operations": [
+        {"op": "add", "itemtype": "GlpiPlugin\\Vulnwatch\\Target", "input": {"software_name": "x"}}]}, contains="VulnWatch")
+    # Interrupteur « Veille vulnérabilités » : outils d'écriture masqués, lecture conservée
+    set_plugin_config("perm_vulnwatch", "0")
+    try:
+        names = tool_names(TOK["admin"])
+        assert "glpi_vulnwatch_campaign" not in names and "glpi_vulnwatch_findings" in names, sorted(n for n in names if "vuln" in n)
+    finally:
+        set_plugin_config("perm_vulnwatch", "1")
 
 
 @test

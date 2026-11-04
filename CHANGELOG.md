@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0 — 2026-11-04
+- **Intégration VulnWatch** (veille vulnérabilités), si le plugin est actif : `glpi_vulnwatch_overview`,
+  `glpi_vulnwatch_findings`, `glpi_vulnwatch_cve` (lecture, droits et entités de VulnWatch), `glpi_vulnwatch_campaign`
+  (tickets de campagne via le moteur de VulnWatch, aperçu, quotas de tickets, annulation) et
+  `glpi_vulnwatch_asset_context` (criticité, exposition). Nouveau type d'action « Veille vulnérabilités ».
+  Configuration de VulnWatch (flux, cibles, réglages) refusée à l'assistant, y compris par les outils génériques.
+  Descriptions de CVE et bulletins marqués comme données non fiables ; traces dans le journal des décisions de VulnWatch.
+- Tests : scénario de bout en bout VulnWatch, jeu de données créé par le test d'intégration de VulnWatch.
+
 ## 1.6.0 — 2026-11-03
 - **Compatibilité GLPI 12** (11.x et 12.x) : CSRF par en-têtes avec GLPI 12, API retirées remplacées,
   propriétés typées ; ré-authentification de GLPI 12 exigée pour approuver une action critique et pour

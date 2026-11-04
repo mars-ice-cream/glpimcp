@@ -24,6 +24,7 @@ final class Permissions
         'form_submit'  => ['Fill in forms', "Submit the forms of the service catalog on the user's behalf", 1],
         'items'        => ['Create and update items', 'Hardware, locations, categories, statuses, contracts, entities, calendars, SLA…', 1],
         'security'     => ['Security incidents (SecIncident)', 'Declare an incident, add to its timeline and IOCs, update remediation tasks. Never deletion or closing', 0],
+        'vulnwatch'    => ['Vulnerability watch (VulnWatch)', 'Create or complete campaign tickets from alerts, set the criticality and exposure of an asset', 1],
         'projects'     => ['Projects', 'Create and update project tasks, their team and their links to tickets', 1],
         'delete'       => ['Move to trash', 'Move items to the trash (can be restored)', 1],
         'purge'        => ['Delete permanently', 'Irreversible deletion (except undoing an AI action)', 0],
@@ -50,6 +51,7 @@ final class Permissions
         'glpi_project_task_add' => 'projects', 'glpi_project_task_update' => 'projects',
         'glpi_secincident_declare' => 'security', 'glpi_secincident_add_event' => 'security',
         'glpi_secincident_add_iocs' => 'security', 'glpi_secincident_task_update' => 'security',
+        'glpi_vulnwatch_campaign' => 'vulnwatch', 'glpi_vulnwatch_asset_context' => 'vulnwatch',
     ];
 
     /** Outils toujours disponibles : savoir qui l'on est, voir et annuler ses propositions */
@@ -286,6 +288,8 @@ final class Permissions
             'profile_rights'        => ['rights'],
             'form_build', 'form_destination_add', 'form_destination_update' => ['forms_design'],
             'form_submit'           => ['form_submit'],
+            'vulnwatch_campaign'    => ['vulnwatch', 'tickets'],
+            'vulnwatch_context', 'vulnwatch_campaign_restore' => ['vulnwatch'],
             'software_merge', 'software_unmerge' => ['software'],
             'add', 'update', 'restore' => [self::typeCategory((string) ($op['itemtype'] ?? ''))],
             'delete'                => array_values(array_unique([
@@ -368,6 +372,8 @@ final class Permissions
             in_array($kind, ['add', 'update'], true) && in_array($type, ['ProjectTask', 'ProjectTaskTeam', 'ProjectTask_Ticket'], true)
                                                                                       => ['glpi_project_task_add', 'glpi_project_task_update'],
             $kind === 'form_submit'                                                   => ['glpi_form_submit'],
+            $kind === 'vulnwatch_campaign'                                            => ['glpi_vulnwatch_campaign'],
+            $kind === 'vulnwatch_context'                                             => ['glpi_vulnwatch_asset_context'],
             $kind === 'config'                                                        => ['glpi_config_set'],
             $kind === 'profile_rights'                                                => ['glpi_profile_rights'],
             $kind === 'delete'                                                        => ['glpi_delete_items'],
@@ -388,6 +394,7 @@ final class Permissions
             return;
         }
         \GlpiPlugin\Glpimcp\Integrations\SecIncident::assertOps($ops);
+        \GlpiPlugin\Glpimcp\Integrations\VulnWatch::assertOps($ops);
         $blocked = [];
         foreach ($ops as $op) {
             foreach (self::categoriesOf($op) as $cat) {

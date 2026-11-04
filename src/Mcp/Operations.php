@@ -13,6 +13,7 @@ use Glpi\Form\AccessControl\FormAccessParameters;
 use Glpi\Form\AnswersHandler\AnswersHandler;
 use Glpi\Form\Form;
 use GlpiPlugin\Glpimcp\Forms\FormBuilder;
+use GlpiPlugin\Glpimcp\Integrations\VulnWatch;
 use Profile;
 use ProfileRight;
 use Session;
@@ -199,6 +200,35 @@ final class Operations
 
                     case 'software_unmerge':
                         $preview[] = ['n' => $n, 'action' => __('undo a software merge', 'glpimcp'), 'logiciel' => '#' . (int) $op['target_id'], 'à_séparer' => count($op['sources'] ?? []) . ' logiciel(s)'];
+                        break;
+
+                    case 'vulnwatch_campaign':
+                        if (!VulnWatch::canCampaign()) {
+                            throw new ToolException('Droits VulnWatch « Créer » et création de ticket requis pour une campagne.');
+                        }
+                        $preview[] = ['n' => $n] + VulnWatch::campaignPreview((array) ($op['items'] ?? []));
+                        break;
+
+                    case 'vulnwatch_campaign_restore':
+                        if (!VulnWatch::canCampaign()) {
+                            throw new ToolException('Droits VulnWatch « Créer » requis.');
+                        }
+                        $preview[] = ['n' => $n, 'action' => __('detach alerts from their campaign', 'glpimcp'), 'objet' => count((array) ($op['items'] ?? [])) . ' alerte(s) VulnWatch'];
+                        break;
+
+                    case 'vulnwatch_context':
+                        VulnWatch::loadAsset((string) ($op['itemtype'] ?? ''), (int) ($op['items_id'] ?? 0));
+                        $old = VulnWatch::context((string) $op['itemtype'], (int) $op['items_id']);
+                        $new = ['criticality' => max(0, min(3, (int) ($op['criticality'] ?? $old['criticality']))), 'exposure' => max(0, min(2, (int) ($op['exposure'] ?? $old['exposure'])))];
+                        $changes = [];
+                        foreach (VulnWatch::contextLabels($old) as $k => $v) {
+                            $after = VulnWatch::contextLabels($new)[$k];
+                            if ($after !== $v) {
+                                $changes[$k] = ['avant' => $v, 'après' => $after];
+                            }
+                        }
+                        $preview[] = ['n' => $n, 'action' => __('set the VulnWatch context of an asset', 'glpimcp'),
+                            'objet' => VulnWatch::assetLabel((string) $op['itemtype'], (int) $op['items_id']), 'changements' => $changes ?: ['(aucun changement)' => ['avant' => null, 'après' => null]]];
                         break;
 
                     case 'form_submit':
@@ -409,6 +439,28 @@ final class Operations
                         $journal['irréversible'][] = 'Annulation de fusion (pour refusionner, relancer la fusion)';
                         break;
 
+                    case 'vulnwatch_campaign':
+                        if (!VulnWatch::canCampaign()) {
+                            throw new ToolException("Opération {$n} : droits VulnWatch « Créer » et création de ticket requis.");
+                        }
+                        $c = VulnWatch::campaignExecute((array) ($op['items'] ?? []));
+                        array_push($journal['undo'], ...$c['undo']);
+                        array_push($journal['irréversible'], ...$c['irréversible']);
+                        $results[] = ['n' => $n] + $c['résultat'] + ['messages_glpi' => Items::flushMessages()];
+                        break;
+
+                    case 'vulnwatch_campaign_restore':
+                        $results[] = ['n' => $n] + VulnWatch::campaignRestore((array) ($op['items'] ?? []));
+                        break;
+
+                    case 'vulnwatch_context':
+                        $c = VulnWatch::contextExecute((string) $op['itemtype'], (int) $op['items_id'],
+                            (int) ($op['criticality'] ?? VulnWatch::context((string) $op['itemtype'], (int) $op['items_id'])['criticality']),
+                            (int) ($op['exposure'] ?? VulnWatch::context((string) $op['itemtype'], (int) $op['items_id'])['exposure']));
+                        $journal['undo'][] = $c['undo'];
+                        $results[] = ['n' => $n] + $c['résultat'];
+                        break;
+
                     case 'form_submit':
                         $form = self::loadAnswerableForm((int) $op['forms_id']);
                         $answers = $op['answers'] ?? [];
@@ -543,6 +595,8 @@ final class Operations
             $kind === 'update'      => __('yes (previous values), except special fields reported', 'glpimcp'),
             $kind === 'form_submit' => __('partial: created items can be deleted, notifications sent are not recalled', 'glpimcp'),
             $kind === 'software_merge' => __('yes (separation of the merged software)', 'glpimcp'),
+            $kind === 'vulnwatch_campaign' => __('partial: created tickets can be moved to the trash; follow-ups added to existing tickets and notifications stay', 'glpimcp'),
+            $kind === 'vulnwatch_context' => __('yes (previous values)', 'glpimcp'),
             default                 => __('yes', 'glpimcp'),
         };
     }

@@ -62,6 +62,28 @@ cd - > /dev/null
 for _ in $(seq 1 60); do curl -fs -o /dev/null "http://127.0.0.1:$PORT/" && break; sleep 0.5; done
 curl -fs -o /dev/null "http://127.0.0.1:$PORT/" || { tail -30 "$WORK/php-server.log"; exit 1; }
 
+# Plugin VulnWatch (facultatif) : VULNWATCH_DIR=/chemin/vers/vulnwatch. Installé, puis peuplé par son propre
+# test d'intégration (entités et actifs « VW », inventaires GLPI Agent, NVD/KEV/flux servis localement).
+if [ -n "${VULNWATCH_DIR:-}" ]; then
+  echo "== VulnWatch : installation et jeu de données"
+  rm -rf "$GLPI/plugins/vulnwatch"
+  mkdir -p "$GLPI/plugins/vulnwatch"
+  tar -C "$VULNWATCH_DIR" --exclude=.git -cf - . | tar -C "$GLPI/plugins/vulnwatch" -xf -
+  if ! { "${CONSOLE[@]}" plugin:install vulnwatch --username=glpi && "${CONSOLE[@]}" plugin:activate vulnwatch; } > "$WORK/vw-install.log" 2>&1; then
+    echo "(VulnWatch ne s'installe pas sur GLPI $GLPI_VERSION : ses tests seront ignorés)"; grep -m1 -i "error" "$WORK/vw-install.log" || true
+    rm -rf "$GLPI/plugins/vulnwatch"
+    VULNWATCH_DIR=""
+  fi
+fi
+if [ -n "${VULNWATCH_DIR:-}" ]; then
+  "${CONSOLE[@]}" config:set --context=inventory enabled_inventory 1 > /dev/null
+  (cd "$GLPI/plugins/vulnwatch" && setsid nohup php -S 127.0.0.2:8099 tests/fixture_router.php > "$WORK/vw-fixtures.log" 2>&1 < /dev/null &)
+  for _ in $(seq 1 20); do curl -fs --noproxy '*' -o /dev/null http://127.0.0.2:8099/kev.json && break; sleep 0.5; done
+  (cd "$GLPI" && php plugins/vulnwatch/tests/integration.php "$GLPI" "http://127.0.0.1:$PORT" > "$WORK/vw-seed.log" 2>&1) \
+    || { echo "(jeu de données VulnWatch incomplet, voir $WORK/vw-seed.log)"; tail -5 "$WORK/vw-seed.log"; }
+  "${CONSOLE[@]}" cache:clear > /dev/null
+fi
+
 cat >> "$WORK/e2e.env" <<EOF
 MCP_URL=http://127.0.0.1:$PORT/plugins/glpimcp/mcp
 GLPI_VERSION=$GLPI_VERSION

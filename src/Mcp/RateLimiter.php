@@ -203,6 +203,8 @@ final class RateLimiter
                 $n++;
             } elseif ($kind === 'form_submit') {
                 $n += max(1, self::formDestinations((int) ($op['forms_id'] ?? 0)));
+            } elseif ($kind === 'vulnwatch_campaign') {
+                $n += \GlpiPlugin\Glpimcp\Integrations\VulnWatch::estimateTickets((array) ($op['items'] ?? []));
             }
         }
         return $n;
@@ -217,7 +219,7 @@ final class RateLimiter
             $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
             if ($kind === 'add' && in_array($type, self::ITIL, true)) {
                 $n++;
-            } elseif ($kind === 'form_submit') {
+            } elseif ($kind === 'form_submit' || $kind === 'vulnwatch_campaign') {
                 foreach ($results[$i]['objets_créés'] ?? [] as $obj) {
                     if (in_array(ltrim((string) ($obj['itemtype'] ?? ''), '\\'), self::ITIL, true)) {
                         $n++;
@@ -244,7 +246,7 @@ final class RateLimiter
         $n = 0;
         foreach ($ops as $op) {
             $type = ltrim((string) ($op['itemtype'] ?? ''), '\\');
-            if ((($op['op'] ?? '') === 'add' && in_array($type, self::ITIL, true)) || ($op['op'] ?? '') === 'form_submit') {
+            if ((($op['op'] ?? '') === 'add' && in_array($type, self::ITIL, true)) || in_array($op['op'] ?? '', ['form_submit', 'vulnwatch_campaign'], true)) {
                 $n++;
             }
         }
