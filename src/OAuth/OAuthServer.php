@@ -429,7 +429,7 @@ final class OAuthServer
 
             [$access, $refresh] = [Token::PREFIX . bin2hex(random_bytes(24)), 'gmcpr_' . bin2hex(random_bytes(24))];
             $token = new Token();
-            $token->add([
+            Token::internal(fn() => $token->add([
                 'users_id'           => (int) $code['users_id'],
                 'oauthclients_id'    => (int) $client['id'],
                 'name'               => $client['name'] . ' (OAuth)',
@@ -444,7 +444,7 @@ final class OAuthServer
                 'date_creation'      => date('Y-m-d H:i:s'),
                 'date_expiration'    => date('Y-m-d H:i:s', time() + $ttl),
                 'refresh_expiration' => date('Y-m-d H:i:s', time() + (int) $code['days'] * 86400),
-            ]);
+            ]));
             $DB->update(self::CLIENTS, ['last_use' => date('Y-m-d H:i:s')], ['id' => $client['id']]);
             return self::tokenResponse($access, $refresh, $ttl);
         }

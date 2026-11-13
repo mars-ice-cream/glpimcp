@@ -53,7 +53,7 @@ if (isset($_POST['generate'])) {
         $can   = $owner === $users_id
             || ($user->getFromDB($owner) && $user->can($owner, UPDATE));
         if ($can) {
-            $token->update(['id' => $token->getID(), 'is_active' => 0]);
+            Token::internal(fn() => $token->update(['id' => $token->getID(), 'is_active' => 0]));
             Session::addMessageAfterRedirect(__('Token revoked.', 'glpimcp'));
         } else {
             Session::addMessageAfterRedirect(__('You cannot revoke this token.', 'glpimcp'), false, ERROR);
