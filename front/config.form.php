@@ -76,6 +76,19 @@ if (isset($_POST['update_permissions'])) {
     Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp'));
     Html::back();
 }
+if (isset($_POST['update_access'])) {
+    $r = \GlpiPlugin\Glpimcp\Mcp\Access::save([
+        'mode'     => $_POST['access_mode'] ?? 'all',
+        'users'    => (array) ($_POST['access_users'] ?? []),
+        'groups'   => (array) ($_POST['access_groups'] ?? []),
+        'profiles' => (array) ($_POST['access_profiles'] ?? []),
+        'blocked'  => (array) ($_POST['blocked_users'] ?? []),
+    ]);
+    Session::addMessageAfterRedirect(__('Configuration updated', 'glpimcp')
+        . ($r['revoked'] > 0 ? ' — ' . sprintf(__('%d token(s) revoked.', 'glpimcp'), $r['revoked']) : ''));
+    Html::back();
+}
+
 if (isset($_POST['update_banned'])) {
     $before = Permissions::bannedTools();
     $known = \GlpiPlugin\Glpimcp\ProfilePolicy::allToolNames();
@@ -247,6 +260,33 @@ foreach (Permissions::CATEGORIES as $k => [$label, $desc, $default]) {
 }
 echo '</div><button type="submit" name="update_permissions" class="btn btn-primary mt-3">' . _sx('button', 'Save') . '</button></form>';
 echo '<p class="text-muted mt-2 mb-0"><small>' . __('Reading is always allowed (within GLPI rights). Remote access to files from URLs is never available.', 'glpimcp') . '</small></p>';
+echo '</div></div>';
+
+// --- Accès : qui peut utiliser l'assistant IA ------------------------------------
+$acc = \GlpiPlugin\Glpimcp\Mcp\Access::settings();
+echo '<div class="card mb-3"><div class="card-header"><h3 class="card-title"><i class="ti ti-user-check me-2"></i>' . __('Who can use the AI assistant', 'glpimcp') . '</h3></div><div class="card-body">';
+echo '<form method="post" action="">' . \GlpiPlugin\Glpimcp\Compat::csrfField();
+foreach ([
+    'all'       => __('Every GLPI account (within its rights)', 'glpimcp'),
+    'allowlist' => __('Only the accounts, groups and profiles listed below', 'glpimcp'),
+] as $v => $label) {
+    echo '<div class="form-check"><input class="form-check-input" type="radio" name="access_mode" value="' . $v . '" id="glpimcp_am_' . $v . '"'
+        . ($acc['mode'] === $v ? ' checked' : '') . '><label class="form-check-label" for="glpimcp_am_' . $v . '">' . $label . '</label></div>';
+}
+echo '<div class="row g-3 mt-1">';
+echo '<div class="col-md-4"><label class="form-label">' . __('Allowed accounts', 'glpimcp') . '</label>';
+User::dropdown(['name' => 'access_users', 'multiple' => true, 'value' => $acc['users'], 'right' => 'all', 'width' => '100%']);
+echo '</div><div class="col-md-4"><label class="form-label">' . __('Allowed groups', 'glpimcp') . '</label>';
+Group::dropdown(['name' => 'access_groups', 'multiple' => true, 'values' => $acc['groups'], 'entity' => -1, 'width' => '100%']);
+echo '</div><div class="col-md-4"><label class="form-label">' . __('Allowed profiles', 'glpimcp') . '</label>';
+Profile::dropdown(['name' => 'access_profiles', 'multiple' => true, 'values' => $acc['profiles'], 'width' => '100%']);
+echo '<small class="text-muted">' . __('An account is allowed if it has one of these profiles, whatever the profile used.', 'glpimcp') . '</small></div>';
+echo '</div>';
+echo '<div class="mt-3"><label class="form-label text-danger"><i class="ti ti-lock me-1"></i>' . __('Blocked accounts (refused in every mode, even administrators)', 'glpimcp') . '</label>';
+User::dropdown(['name' => 'blocked_users', 'multiple' => true, 'value' => $acc['blocked'], 'right' => 'all', 'width' => '100%']);
+echo '<small class="text-muted">' . __('Blocking revokes the tokens and OAuth accesses of the account at once and refuses any new one. GLPI access itself is not affected.', 'glpimcp') . '</small></div>';
+echo '<p class="text-muted mt-2 mb-0">' . __('A single token can also be revoked in « Active tokens » below, or on the user form (tab « AI assistant (MCP) »).', 'glpimcp') . '</p>';
+echo '<button type="submit" name="update_access" class="btn btn-primary mt-3">' . _sx('button', 'Save') . '</button></form>';
 echo '</div></div>';
 
 // --- Outils interdits partout -------------------------------------------------

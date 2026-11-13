@@ -414,6 +414,9 @@ final class OAuthServer
             if (isset($req['redirect_uri']) && $req['redirect_uri'] !== $code['redirect_uri']) {
                 throw new OAuthException('invalid_grant', 'redirect_uri différent de la demande d\'autorisation.');
             }
+            if (($why = \GlpiPlugin\Glpimcp\Mcp\Access::check((int) $code['users_id'])) !== null) {
+                throw new OAuthException('invalid_grant', 'Accès refusé : ' . $why . '.');
+            }
             // Politique actuelle du client : un code émis sous une politique retirée depuis est refusé
             if (($why = ClientPolicy::grantViolation($client, $code + ['date_creation' => date('Y-m-d H:i:s')])) !== null) {
                 throw new OAuthException('invalid_grant', 'Autorisation obsolète (' . $why . ') : reconnectez-vous.');
@@ -458,6 +461,9 @@ final class OAuthServer
             $row = $it->current();
             if (!empty($row['refresh_expiration']) && strtotime((string) $row['refresh_expiration']) < time()) {
                 throw new OAuthException('invalid_grant', 'Autorisation expirée : reconnectez le connecteur.');
+            }
+            if (($why = \GlpiPlugin\Glpimcp\Mcp\Access::check((int) $row['users_id'])) !== null) {
+                throw new OAuthException('invalid_grant', 'Accès refusé : ' . $why . '.');
             }
             // L'accès doit toujours respecter la politique actuelle du client (statut géré, consentement, profil, durée)
             if (($why = ClientPolicy::grantViolation($client, $row)) !== null) {

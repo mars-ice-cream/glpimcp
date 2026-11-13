@@ -17,11 +17,17 @@
    <homepage>https://github.com/mars-ice-cream/glpimcp</homepage>
    <download>https://github.com/mars-ice-cream/glpimcp/releases</download>
    <issues>https://github.com/mars-ice-cream/glpimcp/issues</issues>
-   <readme>https://github.com/mars-ice-cream/glpimcp/blob/main/README.md</readme>
+   <readme>https://raw.githubusercontent.com/mars-ice-cream/glpimcp/main/README.md</readme>
    <authors>
       <author>Gerome Le Duff</author>
    </authors>
    <versions>
+      <version>
+         <num>1.8.0</num>
+         <compatibility>~11.0</compatibility>
+         <compatibility>~12.0</compatibility>
+         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.8.0/glpimcp-1.8.0.tar.bz2</download_url>
+      </version>
       <version>
          <num>1.7.0</num>
          <compatibility>~11.0</compatibility>
@@ -29,35 +35,9 @@
          <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.7.0/glpimcp-1.7.0.tar.bz2</download_url>
       </version>
       <version>
-         <num>1.6.0</num>
-         <compatibility>~11.0</compatibility>
-         <compatibility>~12.0</compatibility>
-         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.6.0/glpimcp-1.6.0.tar.bz2</download_url>
-      </version>
-      <version>
-         <num>1.5.0</num>
-         <compatibility>~11.0</compatibility>
-         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.5.0/glpimcp-1.5.0.tar.bz2</download_url>
-      </version>
-      <version>
-         <num>1.4.0</num>
-         <compatibility>~11.0</compatibility>
-         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.4.0/glpimcp-1.4.0.tar.bz2</download_url>
-      </version>
-      <version>
-         <num>1.3.0</num>
-         <compatibility>~11.0</compatibility>
-         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.3.0/glpimcp-1.3.0.tar.bz2</download_url>
-      </version>
-      <version>
          <num>1.2.0</num>
          <compatibility>~11.0</compatibility>
          <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.2.0/glpimcp-1.2.0.tar.bz2</download_url>
-      </version>
-      <version>
-         <num>1.1.0</num>
-         <compatibility>~11.0</compatibility>
-         <download_url>https://github.com/mars-ice-cream/glpimcp/releases/download/1.1.0/glpimcp-1.1.0.tar.bz2</download_url>
       </version>
    </versions>
    <langs>
@@ -74,6 +54,8 @@
          <tag>Configuration</tag>
          <tag>Audit log</tag>
          <tag>Helpdesk</tag>
+         <tag>Security</tag>
+         <tag>Vulnerabilities</tag>
       </en>
       <fr>
          <tag>IA</tag>
@@ -83,7 +65,12 @@
          <tag>Paramétrage</tag>
          <tag>Journal</tag>
          <tag>Assistance</tag>
+         <tag>Sécurité</tag>
+         <tag>Vulnérabilités</tag>
       </fr>
    </tags>
-   <screenshots></screenshots>
+   <screenshots>
+      <screenshot>https://raw.githubusercontent.com/mars-ice-cream/glpimcp/main/docs/screenshots/administration.png</screenshot>
+      <screenshot>https://raw.githubusercontent.com/mars-ice-cream/glpimcp/main/docs/screenshots/profil.png</screenshot>
+   </screenshots>
 </root>

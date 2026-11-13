@@ -77,6 +77,8 @@ if [ -n "${VULNWATCH_DIR:-}" ]; then
 fi
 if [ -n "${VULNWATCH_DIR:-}" ]; then
   "${CONSOLE[@]}" config:set --context=inventory enabled_inventory 1 > /dev/null
+  # GLPI 12 exige un réglage explicite de l'authentification de l'inventaire (instance de test : aucune)
+  "${CONSOLE[@]}" config:set --context=inventory auth_required none > /dev/null
   (cd "$GLPI/plugins/vulnwatch" && setsid nohup php -S 127.0.0.2:8099 tests/fixture_router.php > "$WORK/vw-fixtures.log" 2>&1 < /dev/null &)
   for _ in $(seq 1 20); do curl -fs --noproxy '*' -o /dev/null http://127.0.0.2:8099/kev.json && break; sleep 0.5; done
   (cd "$GLPI" && php plugins/vulnwatch/tests/integration.php "$GLPI" "http://127.0.0.1:$PORT" > "$WORK/vw-seed.log" 2>&1) \

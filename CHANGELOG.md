@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.0 — 2026-11-13
+- **Qui peut utiliser l'assistant IA** (Administration > Assistant IA (MCP)) : tous les comptes, ou seulement
+  les comptes, groupes et profils autorisés. Hors liste : création de jeton et connexion OAuth refusées,
+  jetons existants refusés (403).
+- **Comptes bloqués**, même administrateurs : jetons et accès OAuth révoqués aussitôt, tout nouvel accès
+  refusé ; boutons *Bloquer*, *Débloquer* et *Révoquer tous les jetons* sur la fiche utilisateur. Journalisé.
+- Tests : scénario de bout en bout (liste autorisée, autorisation par profil, blocage par l'interface,
+  OAuth refusé, déblocage, révocation globale), tests unitaires de la décision d'accès.
+
 ## 1.7.0 — 2026-11-04
 - **Intégration VulnWatch** (veille vulnérabilités), si le plugin est actif : `glpi_vulnwatch_overview`,
   `glpi_vulnwatch_findings`, `glpi_vulnwatch_cve` (lecture, droits et entités de VulnWatch), `glpi_vulnwatch_campaign`

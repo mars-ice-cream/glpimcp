@@ -150,6 +150,19 @@ $old = ['tools_mode' => 'list', 'tools' => ['glpi_search'], 'denied_categories' 
 $new = Permissions::mergePolicy($old, ['glpi_search'], array_keys(Permissions::CATEGORIES), [], $all, $gl, ['glpi_whoami', 'glpi_search']);
 check('outils masqués : exclusion conservée', $new['tools'] ?? null, ['glpi_search']);
 
+echo "Accès à l'assistant IA\n";
+use GlpiPlugin\Glpimcp\Mcp\Access;
+$base = ['mode' => 'all', 'users' => [], 'groups' => [], 'profiles' => [], 'blocked' => []];
+check('mode tous : permis', Access::decide($base, 7, [], []), null);
+check('bloqué même en mode tous', Access::decide(['blocked' => [7]] + $base, 7, [], [4]) !== null, true);
+$list = ['mode' => 'allowlist', 'users' => [9], 'groups' => [3], 'profiles' => [6]] + $base;
+check('liste : compte nommé', Access::decide($list, 9, [], []), null);
+check('liste : membre d\'un groupe autorisé', Access::decide($list, 7, [3], []), null);
+check('liste : profil autorisé', Access::decide($list, 7, [], [6]), null);
+check('liste : ni compte, ni groupe, ni profil', Access::decide($list, 7, [1], [4]) !== null, true);
+check('liste : bloqué l\'emporte sur autorisé', Access::decide(['blocked' => [9]] + $list, 9, [], [6]) !== null, true);
+check('identifiants nettoyés', Access::ids('["3","x",0,3,-1]'), [3]);
+
 echo "VulnWatch\n";
 check('campagne : veille + tickets', Permissions::categoriesOf(['op' => 'vulnwatch_campaign', 'items' => [1]]), ['vulnwatch', 'tickets']);
 check('contexte d\'actif', Permissions::categoriesOf(['op' => 'vulnwatch_context']), ['vulnwatch']);

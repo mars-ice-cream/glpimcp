@@ -199,7 +199,13 @@ class Token extends CommonDBTM
         }
         echo '</tbody></table>';
 
-        if ($can_create) {
+        $denied = \GlpiPlugin\Glpimcp\Mcp\Access::check($users_id);
+        if ($denied !== null) {
+            echo '<div class="alert alert-warning mt-2"><i class="ti ti-lock me-1"></i>' . ($can_create
+                ? htmlescape(__('Your administrator has not allowed this account to use an AI assistant with GLPI.', 'glpimcp'))
+                : htmlescape(__('This account is not allowed to use the AI assistant.', 'glpimcp')) . ' <small class="text-muted">(' . htmlescape($denied) . ')</small>') . '</div>';
+        }
+        if ($can_create && $denied === null) {
             echo '<form method="post" action="' . htmlescape($action) . '" class="row g-2 align-items-end mt-2">';
             echo '<div class="col-auto"><label class="form-label">' . __('Name') . '</label>';
             echo '<input type="text" name="name" class="form-control" placeholder="Claude, Copilot…" maxlength="100"></div>';
@@ -235,6 +241,17 @@ class Token extends CommonDBTM
             echo \GlpiPlugin\Glpimcp\Compat::csrfField();
             echo '<div class="col-auto"><button type="submit" name="generate" class="btn btn-primary"><i class="ti ti-key me-1"></i>' . __('Generate a token', 'glpimcp') . '</button></div>';
             echo '</form>';
+        }
+        if (!$can_create && Session::haveRight('config', UPDATE)) {
+            // Administrateur sur la fiche d'un compte : bloquer, débloquer, tout révoquer
+            $blocked = in_array($users_id, \GlpiPlugin\Glpimcp\Mcp\Access::settings()['blocked'], true);
+            echo '<form method="post" action="' . htmlescape($action) . '" class="mt-3 d-flex gap-2 flex-wrap">';
+            echo Html::hidden('users_id', ['value' => $users_id]) . \GlpiPlugin\Glpimcp\Compat::csrfField();
+            echo '<button type="submit" name="revoke_all" class="btn btn-outline-danger"><i class="ti ti-key-off me-1"></i>' . __('Revoke all tokens of this account', 'glpimcp') . '</button>';
+            echo $blocked
+                ? '<button type="submit" name="unblock_user" class="btn btn-outline-secondary"><i class="ti ti-lock-open me-1"></i>' . __('Unblock AI assistant access', 'glpimcp') . '</button>'
+                : '<button type="submit" name="block_user" class="btn btn-danger"><i class="ti ti-lock me-1"></i>' . __('Block AI assistant access (even administrators)', 'glpimcp') . '</button>';
+            echo '</form><small class="text-muted">' . __('Blocking revokes the tokens and OAuth accesses of the account at once and refuses any new one. GLPI access itself is not affected.', 'glpimcp') . '</small>';
         }
         echo '</div></div>';
 

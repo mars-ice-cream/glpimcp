@@ -947,3 +947,58 @@ msgstr "renseigner le contexte VulnWatch d'un actif"
 
 msgid "yes (previous values)"
 msgstr "oui (anciennes valeurs)"
+
+# 1.8.0 — accès à l'assistant IA
+msgid "Who can use the AI assistant"
+msgstr "Qui peut utiliser l'assistant IA"
+
+msgid "Every GLPI account (within its rights)"
+msgstr "Tous les comptes GLPI (dans leurs droits)"
+
+msgid "Only the accounts, groups and profiles listed below"
+msgstr "Seulement les comptes, groupes et profils indiqués ci-dessous"
+
+msgid "Allowed accounts"
+msgstr "Comptes autorisés"
+
+msgid "Allowed groups"
+msgstr "Groupes autorisés"
+
+msgid "Allowed profiles"
+msgstr "Profils autorisés"
+
+msgid "An account is allowed if it has one of these profiles, whatever the profile used."
+msgstr "Un compte est autorisé s'il possède l'un de ces profils, quel que soit le profil utilisé."
+
+msgid "Blocked accounts (refused in every mode, even administrators)"
+msgstr "Comptes bloqués (refusés dans tous les cas, même administrateurs)"
+
+msgid "Blocking revokes the tokens and OAuth accesses of the account at once and refuses any new one. GLPI access itself is not affected."
+msgstr "Le blocage révoque aussitôt les jetons et accès OAuth du compte et refuse tout nouvel accès. L'accès à GLPI lui-même n'est pas touché."
+
+msgid "A single token can also be revoked in « Active tokens » below, or on the user form (tab « AI assistant (MCP) »)."
+msgstr "Un jeton précis peut aussi être révoqué dans « Jetons actifs » ci-dessous, ou sur la fiche de l'utilisateur (onglet « Assistant IA (MCP) »)."
+
+msgid "Your administrator has not allowed this account to use an AI assistant with GLPI."
+msgstr "Votre administrateur n'a pas autorisé ce compte à utiliser un assistant IA avec GLPI."
+
+msgid "This account is not allowed to use the AI assistant."
+msgstr "Ce compte n'est pas autorisé à utiliser l'assistant IA."
+
+msgid "Revoke all tokens of this account"
+msgstr "Révoquer tous les jetons de ce compte"
+
+msgid "Unblock AI assistant access"
+msgstr "Débloquer l'accès à l'assistant IA"
+
+msgid "Block AI assistant access (even administrators)"
+msgstr "Bloquer l'accès à l'assistant IA (même administrateur)"
+
+msgid "%d token(s) revoked."
+msgstr "%d jeton(s) révoqué(s)."
+
+msgid "AI assistant access blocked, %d token(s) revoked."
+msgstr "Accès à l'assistant IA bloqué, %d jeton(s) révoqué(s)."
+
+msgid "AI assistant access unblocked."
+msgstr "Accès à l'assistant IA débloqué."
