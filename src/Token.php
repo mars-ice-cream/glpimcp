@@ -35,14 +35,67 @@ class Token extends CommonDBTM
         return 'glpi_plugin_glpimcp_tokens';
     }
 
+    /**
+     * Aucun accès par les mécanismes génériques de GLPI (API REST historique /apirest.php, formulaires et
+     * listes génériques, actions de masse) : un jeton ne se crée, ne se lit et ne se révoque que par le code
+     * de ce plugin (page « Assistant IA », OAuth). Sans cela, tout compte connecté pouvait créer par l'API
+     * une ligne de jeton au nom d'un AUTRE compte (users_id, token_hash et profiles_id au choix), puis
+     * appeler le serveur MCP avec les droits de ce compte.
+     */
     public static function canCreate(): bool
     {
-        return Session::getLoginUserID() !== false;
+        return false;
     }
 
     public static function canView(): bool
     {
-        return Session::getLoginUserID() !== false;
+        return false;
+    }
+
+    public static function canUpdate(): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(): bool
+    {
+        return false;
+    }
+
+    public static function canPurge(): bool
+    {
+        return false;
+    }
+
+    /** Écritures du plugin lui-même en cours (voir internal()) */
+    private static int $internal = 0;
+
+    /**
+     * Exécute une écriture de jeton faite par le plugin lui-même. Hors de cet appel, add() et update()
+     * sont refusés (seconde barrière, au cas où un autre chemin générique ne vérifierait pas can*()).
+     *
+     * @template T
+     * @param callable(): T $write
+     * @return T
+     */
+    public static function internal(callable $write): mixed
+    {
+        self::$internal++;
+        try {
+            return $write();
+        } finally {
+            self::$internal--;
+        }
+    }
+
+    public function prepareInputForAdd($input)
+    {
+        return self::$internal > 0 ? $input : false;
+    }
+
+    public function prepareInputForUpdate($input)
+    {
+        return self::$internal > 0 ? $input : false;
     }
 
     /**
@@ -56,7 +109,7 @@ class Token extends CommonDBTM
         }
         $plain = self::PREFIX . bin2hex(random_bytes(24));
         $token = new self();
-        $token->add([
+        self::internal(fn() => $token->add([
             'users_id'        => $users_id,
             'name'            => $name !== '' ? $name : 'Assistant IA',
             'token_hash'      => hash('sha256', $plain),
@@ -67,7 +120,7 @@ class Token extends CommonDBTM
             'is_active'       => 1,
             'date_creation'   => $_SESSION['glpi_currenttime'] ?? date('Y-m-d H:i:s'),
             'date_expiration' => $days > 0 ? date('Y-m-d H:i:s', strtotime("+{$days} days")) : null,
-        ]);
+        ]));
         return $plain;
     }
 

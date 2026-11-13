@@ -188,5 +188,32 @@ check('profil imposé changé', CP::grantViolation(['forced_profiles_id' => 2] +
 check('durée raccourcie', CP::grantViolation(['token_days' => 7] + $managed, ['date_creation' => date('Y-m-d H:i:s', time() - 10 * 86400)] + $implicit) !== null, true);
 check('client désactivé', CP::grantViolation(['is_active' => 0] + $managed, $implicit) !== null, true);
 
+echo "Types interdits : casse et « \\ » initial\n";
+// Classes GLPI minimales : PHP retrouve une classe déjà chargée quelle que soit la casse demandée
+if (!class_exists('CommonDBTM')) {
+    class CommonDBTM {}
+    class Config extends CommonDBTM {}
+    class Computer extends CommonDBTM {}
+}
+class_exists(\GlpiPlugin\Glpimcp\Token::class); // chargée, comme pendant toute requête MCP
+$resolve = function (string $type): string {
+    try {
+        return \GlpiPlugin\Glpimcp\Mcp\Items::resolveType($type);
+    } catch (\GlpiPlugin\Glpimcp\Mcp\ToolException) {
+        return 'REFUSÉ';
+    }
+};
+check('alias', $resolve('ordinateur'), 'Computer');
+check('casse ramenée au nom déclaré', $resolve('COMPUTER'), 'Computer');
+check('Config interdit', $resolve('Config'), 'REFUSÉ');
+check('config (minuscules) interdit', $resolve('config'), 'REFUSÉ');
+check('\\Config interdit', $resolve('\\Config'), 'REFUSÉ');
+check('jeton du plugin interdit', $resolve('GlpiPlugin\\Glpimcp\\Token'), 'REFUSÉ');
+check('jeton du plugin en minuscules interdit', $resolve('glpiplugin\\glpimcp\\token'), 'REFUSÉ');
+check('jeton : création générique refusée', \GlpiPlugin\Glpimcp\Token::canCreate(), false);
+check('jeton : lecture générique refusée', \GlpiPlugin\Glpimcp\Token::canView(), false);
+check('jeton : add() hors du plugin refusé', (new \GlpiPlugin\Glpimcp\Token())->prepareInputForAdd(['users_id' => 2]), false);
+check('jeton : add() du plugin accepté', \GlpiPlugin\Glpimcp\Token::internal(fn() => (new \GlpiPlugin\Glpimcp\Token())->prepareInputForAdd(['users_id' => 2])), ['users_id' => 2]);
+
 echo "\n$pass réussi(s), $fail échec(s)\n";
 exit($fail ? 1 : 0);

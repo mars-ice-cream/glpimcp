@@ -144,7 +144,12 @@ final class Items
         if (!class_exists($class) || !is_a($class, CommonDBTM::class, true)) {
             throw new ToolException("Type d'objet inconnu : « {$itemtype} ». Utilise glpi_list_itemtypes pour voir les types disponibles.");
         }
-        if (in_array($class, self::FORBIDDEN_TYPES, true) || str_starts_with($class, 'GlpiPlugin\\Glpimcp\\')) {
+        // Nom de classe tel que déclaré : PHP ignore la casse et accepte un « \ » initial (« config », « \Config »,
+        // « glpiplugin\glpimcp\token » désignent des classes existantes). Sans cela, les interdictions ci-dessous,
+        // comparées à la lettre, étaient contournées par les outils de lecture (glpi_search, glpi_get_item,
+        // glpi_export, glpi_describe_itemtype), qui n'appellent pas Operations::canonicalize().
+        $class = (new \ReflectionClass($class))->getName();
+        if (in_array($class, self::FORBIDDEN_TYPES, true) || stripos($class, 'GlpiPlugin\\Glpimcp\\') === 0) {
             throw new ToolException("Le type « {$class} » n'est pas manipulable via l'assistant IA.");
         }
         return $class;
