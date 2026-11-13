@@ -248,6 +248,13 @@ la configuration de GLPI.
   Pour un premier paramétrage complet (création de comptes, réglages e-mail…), activer
   temporairement « Utilisateurs et groupes » et « Configuration générale ». Chaque changement
   de ces interrupteurs est inscrit au journal IA.
+- **Qui peut utiliser l'assistant IA** : tous les comptes (dans leurs droits), ou **seulement** les comptes,
+  groupes et profils indiqués (ex. le profil Technicien, ou un groupe « Pilote IA »). Les autres ne peuvent ni
+  créer de jeton ni se connecter par OAuth, et leurs jetons existants sont refusés.
+- **Comptes bloqués** : refusés quel que soit le mode, **même administrateurs** ; le blocage révoque aussitôt
+  leurs jetons et accès OAuth. Aussi depuis la fiche de l'utilisateur (onglet *Assistant IA (MCP)*) :
+  *Bloquer l'accès*, *Débloquer*, *Révoquer tous les jetons de ce compte*. L'accès à GLPI lui-même n'est jamais
+  touché. Contrôlé à chaque requête, à la création d'un jeton, à la connexion OAuth et à chaque rafraîchissement.
 - **Outils interdits pour tout le monde** : un outil coché est masqué pour tous les assistants et
   refusé, quel que soit le profil. Passe avant tout le reste.
 - **Restrictions par profil** : sur chaque fiche profil (*Administration > Profils*), un onglet

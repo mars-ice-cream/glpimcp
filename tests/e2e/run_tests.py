@@ -1193,6 +1193,61 @@ def cleanup():
             print(f"  (nettoyage #{jid} : {e})")
 
 
+@test
+def acces_reserve_et_comptes_bloques():
+    """Accès réservé à certains comptes, groupes ou profils ; blocage d'un compte (même administrateur) par
+    l'interface : jetons et accès OAuth révoqués aussitôt, nouveaux refusés, GLPI lui-même non touché.
+    Dernier test : révoque les jetons du compte « dual »."""
+    need("admin", "selfservice", "dual_tech")
+    need_fixtures()
+    if not (DB_CLI and os.environ.get("DUAL_LOGIN") and FIX.get("DUAL_ID")):
+        raise Skip("DB_CLI ou compte « dual » absents")
+    admin_uid = ok(TOK["admin"], "glpi_whoami")["utilisateur"]["id"]
+    dual = int(FIX["DUAL_ID"])
+    status = lambda tok: rpc(tok, "tools/call", {"name": "glpi_whoami", "arguments": {}}, raw=True).status_code
+    access = lambda **kw: admin_post("/plugins/glpimcp/front/config.form.php", {"update_access": "1", **kw})
+    tokens = lambda uid: db_count(f"SELECT COUNT(*) FROM glpi_plugin_glpimcp_tokens WHERE users_id={uid} AND is_active=1")
+    try:
+        # 1. Accès réservé au seul compte admin : les autres jetons sont refusés, pas révoqués
+        access(access_mode="allowlist", **{"access_users[]": [admin_uid]})
+        assert status(TOK["admin"]) == 200
+        assert status(TOK["selfservice"]) == 403, "compte hors liste accepté"
+        before = tokens(dual)
+        s = glpi_session(os.environ["DUAL_LOGIN"], os.environ["DUAL_PASSWORD"])
+        page = s.get(BASE + "/front/preference.php", timeout=30)
+        s.post(BASE + "/plugins/glpimcp/front/token.form.php", data={**csrf(page.text), "generate": "1", "name": "refusé", "profiles_id": FIX["P_TECH"], "days": 30}, timeout=30)
+        assert tokens(dual) == before, "jeton créé par un compte non autorisé"
+        # Autorisé par profil (Self-Service) : le jeton self-service revient, sans recréation
+        access(access_mode="allowlist", **{"access_users[]": [admin_uid], "access_profiles[]": [FIX["P_SELF"]]})
+        assert status(TOK["selfservice"]) == 200, "profil autorisé refusé"
+
+        # 2. Blocage d'un compte depuis sa fiche (onglet Assistant IA) : même en mode « tous »
+        access(access_mode="all")
+        assert status(TOK["dual_tech"]) == 200
+        admin_post("/plugins/glpimcp/front/token.form.php", {"block_user": "1", "users_id": dual})
+        assert tokens(dual) == 0, "jetons du compte bloqué encore actifs"
+        assert status(TOK["dual_tech"]) == 401
+        cid = "gmcpc_e2e_block_" + STAMP
+        redirect = "https://client.example.test/cb"
+        db(f"INSERT INTO glpi_plugin_glpimcp_oauthclients (client_id, name, redirect_uris, origin, is_active, date_creation) VALUES ('{cid}', 'E2E blocage', '[\"{redirect}\"]', 'dcr', 1, NOW())")
+        r, _ = oauth_code_flow(s, cid, redirect)
+        assert r.status_code == 403 and "code=" not in r.headers.get("Location", ""), f"connexion OAuth d'un compte bloqué : {r.status_code}"
+        assert "login_name" not in s.get(BASE + "/front/central.php", timeout=30).text, "l'accès à GLPI lui-même a été touché"
+        # Débloqué : les jetons révoqués le restent, un nouveau jeton fonctionne
+        admin_post("/plugins/glpimcp/front/token.form.php", {"unblock_user": "1", "users_id": dual})
+        assert status(TOK["dual_tech"]) == 401, "jeton révoqué revenu au déblocage"
+        page = s.get(BASE + "/front/preference.php", timeout=30)
+        s.post(BASE + "/plugins/glpimcp/front/token.form.php", data={**csrf(page.text), "generate": "1", "name": "après déblocage", "profiles_id": FIX["P_TECH"], "days": 30}, timeout=30)
+        assert tokens(dual) == 1, "jeton refusé après déblocage"
+        # 3. Tout révoquer pour un compte
+        admin_post("/plugins/glpimcp/front/token.form.php", {"revoke_all": "1", "users_id": dual})
+        assert tokens(dual) == 0
+        assert db_count("SELECT COUNT(*) FROM glpi_plugin_glpimcp_logs WHERE summary LIKE 'Assistant IA : accès bloqué pour%'") >= 1, "blocage non journalisé"
+    finally:
+        access(access_mode="all")
+        db(f"UPDATE glpi_plugin_glpimcp_oauthclients SET is_active=0 WHERE client_id LIKE 'gmcpc_e2e_block_%'")
+
+
 def main():
     print(f"GLPI MCP — tests de bout en bout sur {MCP_URL}\n")
     passed = failed = skipped = 0

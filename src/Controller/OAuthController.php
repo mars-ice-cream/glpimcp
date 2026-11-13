@@ -133,6 +133,12 @@ final class OAuthController extends AbstractController
 
         $users_id = (int) Session::getLoginUserID();
 
+        // Compte bloqué ou hors de la liste des comptes autorisés à utiliser l'assistant IA
+        if (\GlpiPlugin\Glpimcp\Mcp\Access::check($users_id) !== null) {
+            return $this->page(fn() => print('<div class="alert alert-warning">'
+                . htmlescape(__('Your administrator has not allowed this account to use an AI assistant with GLPI.', 'glpimcp')) . '</div>'), 403);
+        }
+
         // Client IA géré par l'entreprise : profil imposé, consentement implicite possible (SSO → accès direct)
         $client = $req['client'];
         if (ClientPolicy::isManaged($client)) {

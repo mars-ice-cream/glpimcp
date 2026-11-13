@@ -255,6 +255,11 @@ function plugin_glpimcp_install(): bool
         'alert_emails'           => $keep('alert_emails', ''),
         'trusted_proxies'        => $keep('trusted_proxies', ''),
         'banned_tools'           => $keep('banned_tools', '[]'),
+        'access_mode'            => $keep('access_mode', 'all'),
+        'access_users'           => $keep('access_users', '[]'),
+        'access_groups'          => $keep('access_groups', '[]'),
+        'access_profiles'        => $keep('access_profiles', '[]'),
+        'blocked_users'          => $keep('blocked_users', '[]'),
     ]);
 
     Config::setConfigurationValues('plugin:glpimcp', [

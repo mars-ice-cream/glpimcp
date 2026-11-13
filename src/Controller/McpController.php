@@ -69,6 +69,11 @@ final class McpController extends AbstractController
             );
         }
 
+        // Accès à l'assistant IA retiré à ce compte (bloqué, ou hors de la liste autorisée) : refusé tout de suite
+        if (($why = \GlpiPlugin\Glpimcp\Mcp\Access::check((int) $token['users_id'])) !== null) {
+            return new JsonResponse(Server::error(null, -32003, 'Forbidden: ' . $why . '.'), 403, $headers);
+        }
+
         // Client IA géré par l'entreprise : adresses IP autorisées
         $client = null;
         if ((int) ($token['oauthclients_id'] ?? 0) > 0) {
