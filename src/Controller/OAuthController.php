@@ -66,9 +66,9 @@ final class OAuthController extends AbstractController
             if (!is_array($body)) {
                 throw new OAuthException('invalid_client_metadata', 'Corps JSON attendu.');
             }
-            return new JsonResponse(OAuthServer::register($body), 201, self::CORS);
+            return new JsonResponse(OAuthServer::register($body, ClientPolicy::clientIp($request)), 201, self::CORS);
         } catch (OAuthException $e) {
-            return new JsonResponse($e->toArray(), $e->status, self::CORS);
+            return new JsonResponse($e->toArray(), $e->status, self::CORS + ($e->status === 429 ? ['Retry-After' => '3600'] : []));
         }
     }
 

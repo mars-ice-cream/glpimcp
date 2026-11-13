@@ -128,15 +128,28 @@ final class OAuthServer
 
     // ------------------------------------------------------------------ clients
 
+    /** Enregistrements dynamiques acceptés par heure : par adresse IP, et au total */
+    public const REGISTER_PER_IP_PER_HOUR = 60;
+    public const REGISTER_PER_HOUR = 300;
+
     /**
      * Enregistrement dynamique (RFC 7591).
+     *
+     * @param string $ip adresse du demandeur (ClientPolicy::clientIp) ; vide = pas de limite par adresse
      */
-    public static function register(array $req): array
+    public static function register(array $req, string $ip = ''): array
     {
         global $DB;
 
         if (!self::config('oauth_dcr_enabled', 1)) {
             throw new OAuthException('invalid_request', "L'enregistrement dynamique des clients est désactivé sur ce GLPI.", 403);
+        }
+        // Point d'entrée sans authentification : sans limite, n'importe qui pouvait remplir la table des clients
+        if (
+            ($ip !== '' && \GlpiPlugin\Glpimcp\Mcp\RateLimiter::hit('dcr:ip:' . $ip, 3600) > self::REGISTER_PER_IP_PER_HOUR)
+            || \GlpiPlugin\Glpimcp\Mcp\RateLimiter::hit('dcr:all', 3600) > self::REGISTER_PER_HOUR
+        ) {
+            throw new OAuthException('temporarily_unavailable', "Trop d'enregistrements de clients : réessayez plus tard.", 429);
         }
         $uris = $req['redirect_uris'] ?? null;
         if (!is_array($uris) || $uris === []) {
@@ -219,7 +232,16 @@ final class OAuthServer
         global $DB;
 
         $host = parse_url($url, PHP_URL_HOST);
-        if (!$host || filter_var(gethostbyname($host), FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+        $port = (int) (parse_url($url, PHP_URL_PORT) ?: 443);
+        // Toutes les adresses IPv4 du nom doivent être publiques
+        $ips = $host ? (gethostbynamel($host) ?: []) : [];
+        foreach ($ips as $ip) {
+            if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+                $ips = [];
+                break;
+            }
+        }
+        if ($ips === []) {
             throw new OAuthException('invalid_client', 'URL de métadonnées client refusée.');
         }
         $ch = curl_init($url);
@@ -229,6 +251,11 @@ final class OAuthServer
             CURLOPT_TIMEOUT        => 8,
             CURLOPT_HTTPHEADER     => ['Accept: application/json'],
             CURLOPT_PROTOCOLS      => CURLPROTO_HTTPS,
+            // La connexion se fait à l'adresse qui vient d'être vérifiée : sinon cURL refait la résolution DNS
+            // et un nom qui change de réponse (DNS rebinding) ou qui a aussi une adresse IPv6 interne
+            // contournait le contrôle ci-dessus. Le certificat reste vérifié pour le nom d'hôte.
+            CURLOPT_RESOLVE        => ["{$host}:{$port}:{$ips[0]}"],
+            CURLOPT_IPRESOLVE      => CURL_IPRESOLVE_V4,
         ]);
         $body = curl_exec($ch);
         $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
@@ -404,7 +431,12 @@ final class OAuthServer
                 throw new OAuthException('invalid_grant', 'Code invalide ou déjà utilisé.');
             }
             $code = $it->current();
-            $DB->delete(self::CODES, ['id' => $code['id']]); // usage unique
+            // Usage unique : seule la requête qui a réellement supprimé la ligne continue (deux échanges
+            // simultanés du même code lisaient tous deux la ligne avant sa suppression)
+            $DB->delete(self::CODES, ['id' => $code['id']]);
+            if ($DB->affectedRows() !== 1) {
+                throw new OAuthException('invalid_grant', 'Code invalide ou déjà utilisé.');
+            }
             if (strtotime((string) $code['date_expiration']) < time()) {
                 throw new OAuthException('invalid_grant', 'Code expiré.');
             }
